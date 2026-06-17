@@ -3,345 +3,307 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Shop Pro Drive System</title>
+<title>Shop Pro Fixed</title>
 
-<link rel="manifest" href="manifest.json"/>
-
-<script src="https://apis.google.com/js/api.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
 <style>
-body {
-  font-family: Arial;
-  margin: 0;
-  background: #0f172a;
-  color: white;
+body{
+  margin:0;
+  font-family:Arial;
+  background:#0f172a;
+  color:white;
 }
 
-.header {
-  padding: 15px;
-  background: #111827;
-  font-size: 20px;
-  font-weight: bold;
+/* HEADER */
+.header{
+  padding:12px;
+  font-size:18px;
+  background:#111827;
 }
 
-.container { padding: 12px; }
-
-.card {
-  background: #1f2937;
-  padding: 10px;
-  margin-top: 10px;
-  border-radius: 10px;
+/* BUTTONS MOBILE FIX */
+.btn{
+  width:100%;
+  padding:10px;
+  margin-top:8px;
+  border:none;
+  border-radius:8px;
+  font-size:14px;
 }
 
-.btn {
-  width: 100%;
-  padding: 10px;
-  margin-top: 8px;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
+/* LAYOUT */
+.container{padding:10px;}
+
+.grid{
+  display:grid;
+  grid-template-columns:repeat(2,1fr);
+  gap:10px;
 }
 
-.primary { background: #3b82f6; color: white; }
-.success { background: #22c55e; color: white; }
-.danger { background: #ef4444; color: white; }
-
-input, select {
-  width: 100%;
-  padding: 8px;
-  margin: 5px 0;
-  border-radius: 6px;
-  border: none;
+.card{
+  background:#1f2937;
+  padding:10px;
+  border-radius:10px;
+  font-size:14px;
 }
 
-video { width: 100%; border-radius: 10px; }
-
-.popup {
-  position: fixed;
-  top: 10%;
-  left: 5%;
-  width: 90%;
-  background: white;
-  color: black;
-  padding: 12px;
-  border-radius: 10px;
-  display: none;
-  z-index: 10;
+/* QR IMAGE SMALL OVERLAY */
+.item-box{
+  position:relative;
 }
 
-.grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 10px;
+.qr-mini{
+  position:absolute;
+  bottom:5px;
+  right:5px;
+  width:60px;
+  height:60px;
+  background:white;
+  padding:3px;
+  border-radius:6px;
 }
 
-.qr {
-  background: white;
-  padding: 5px;
-  border-radius: 8px;
-  margin-top: 5px;
+/* POPUP */
+.popup{
+  position:fixed;
+  top:10%;
+  left:5%;
+  width:90%;
+  background:white;
+  color:black;
+  padding:10px;
+  border-radius:10px;
+  display:none;
+  z-index:10;
+}
+
+input,select{
+  width:100%;
+  padding:8px;
+  margin:5px 0;
+  font-size:14px;
+}
+
+/* CATEGORY BAR */
+.cat-bar{
+  display:flex;
+  overflow-x:auto;
+  gap:8px;
+  padding:10px;
+}
+
+.cat{
+  background:#334155;
+  padding:8px 12px;
+  border-radius:20px;
+  white-space:nowrap;
+  font-size:13px;
 }
 </style>
 </head>
 
 <body>
 
-<div class="header">☁️ Shop Pro Drive System</div>
+<div class="header">📦 Shop Pro Mobile POS</div>
 
 <div class="container">
 
-<!-- CLIENT ID -->
-<div class="card">
-  <h3>🔑 Google Client ID</h3>
-  <input id="clientIdInput" placeholder="Paste YOUR_CLIENT_ID here">
-  <button class="btn primary" onclick="saveClientId()">Save Client ID</button>
+<!-- LOGIN -->
+<button class="btn" id="loginBtn">🔐 Google Login</button>
+
+<!-- DASHBOARD -->
+<div class="cat-bar" id="cats"></div>
+
+<!-- ITEMS -->
+<div id="view"></div>
+
 </div>
-
-<button class="btn success" onclick="initGoogle()">🔐 Init Google</button>
-<button class="btn primary" onclick="signIn()">🔓 Login</button>
-
-<!-- CAMERA -->
-<video id="video" autoplay></video>
-<button class="btn primary" onclick="capture()">📸 Scan Item</button>
-
-<canvas id="canvas" style="display:none;"></canvas>
 
 <!-- POPUP -->
 <div class="popup" id="popup">
 
-<h3>✏️ Item Form</h3>
+<h3>Add Item</h3>
 
-<input id="name" placeholder="Name">
-<input id="price" type="number" placeholder="Price">
-<input id="discount" type="number" placeholder="Discount %">
-
+<input id="name" placeholder="Name"/>
+<input id="price" type="number" placeholder="Price"/>
 <select id="category">
   <option>Food</option>
   <option>Drink</option>
   <option>Electronics</option>
 </select>
 
-<button class="btn primary" onclick="saveItem()">💾 Save to Drive</button>
-<button class="btn danger" onclick="closePopup()">Close</button>
-
-</div>
-
-<!-- OUTPUT -->
-<div id="list"></div>
+<button class="btn" onclick="saveItem()">Save</button>
+<button class="btn" onclick="popup.style.display='none'">Close</button>
 
 </div>
 
 <script>
-let imageData = "";
-let accessToken = "";
 
-/* ================= CLIENT ID ================= */
+let token = "";
+let currentCat = "Food";
 
-function saveClientId() {
-  localStorage.setItem("google_client_id", clientIdInput.value);
-  alert("Saved!");
-}
+/* ================= GOOGLE LOGIN (FIXED) ================= */
 
-function getClientId() {
-  return localStorage.getItem("google_client_id");
-}
+const CLIENT_ID = "YOUR_CLIENT_ID.apps.googleusercontent.com";
+
+const loginBtn = document.getElementById("loginBtn");
 
 window.onload = () => {
-  const saved = getClientId();
-  if (saved) clientIdInput.value = saved;
+  renderCategories();
 };
 
-/* ================= GOOGLE INIT ================= */
-
-function initGoogle() {
-
-  const CLIENT_ID = getClientId();
-
-  if (!CLIENT_ID) {
-    alert("Enter Client ID first");
-    return;
-  }
-
-  gapi.load("client:auth2", () => {
-    gapi.auth2.init({
-      client_id: CLIENT_ID
-    });
+function initGIS(){
+  google.accounts.id.initialize({
+    client_id: CLIENT_ID,
+    callback: handleLogin
   });
 
-  alert("Google Ready");
+  loginBtn.onclick = () => google.accounts.id.prompt();
 }
 
-/* ================= LOGIN ================= */
-
-async function signIn() {
-  const auth = await gapi.auth2.getAuthInstance().signIn();
-  accessToken = auth.getAuthResponse().access_token;
-  alert("Logged in!");
+function handleLogin(res){
+  token = res.credential;
+  alert("Login success");
 }
 
-/* ================= CAMERA ================= */
+initGIS();
 
-navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
-.then(stream => video.srcObject = stream);
+/* ================= DRIVE UPLOAD (FIXED) ================= */
 
-/* ================= CAPTURE ================= */
+async function uploadToDrive(blob, name, folderId){
 
-function capture() {
-
-  const canvas = document.getElementById("canvas");
-
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
-
-  const ctx = canvas.getContext("2d");
-  ctx.drawImage(video, 0, 0);
-
-  imageData = canvas.toDataURL("image/png");
-
-  popup.style.display = "block";
-}
-
-/* ================= DRIVE FOLDER ================= */
-
-async function createFolder(name) {
-
-  const res = await fetch("https://www.googleapis.com/drive/v3/files", {
-    method: "POST",
-    headers: {
-      "Authorization": "Bearer " + accessToken,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      name,
-      mimeType: "application/vnd.google-apps.folder"
-    })
-  });
-
-  return await res.json();
-}
-
-/* ================= UPLOAD ================= */
-
-async function uploadFile(blob, name, folderId) {
+  const meta = {
+    name,
+    parents:[folderId]
+  };
 
   const form = new FormData();
-
-  form.append("metadata", new Blob([JSON.stringify({
-    name,
-    parents: [folderId]
-  })], { type: "application/json" }));
-
+  form.append("metadata", new Blob([JSON.stringify(meta)],{type:"application/json"}));
   form.append("file", blob);
 
-  const res = await fetch(
+  return await fetch(
     "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
     {
-      method: "POST",
-      headers: {
-        "Authorization": "Bearer " + accessToken
+      method:"POST",
+      headers:{
+        "Authorization":"Bearer "+token
       },
-      body: form
+      body:form
     }
-  );
+  ).then(r=>r.json());
+}
 
-  return await res.json();
+/* ================= DATA ================= */
+
+function getDB(){
+  return JSON.parse(localStorage.getItem("db")||"[]");
+}
+
+function saveDB(d){
+  localStorage.setItem("db",JSON.stringify(d));
+}
+
+/* ================= CATEGORIES ================= */
+
+function renderCategories(){
+
+  const db = getDB();
+  const cats = [...new Set(db.map(i=>i.category))];
+
+  if(cats.length===0) cats.push("Food");
+
+  const bar = document.getElementById("cats");
+  bar.innerHTML="";
+
+  cats.forEach(c=>{
+    const d=document.createElement("div");
+    d.className="cat";
+    d.innerText=c;
+    d.onclick=()=>openCat(c);
+    bar.appendChild(d);
+  });
+
+  openCat(cats[0]);
+}
+
+/* ================= CATEGORY VIEW ================= */
+
+function openCat(cat){
+
+  currentCat=cat;
+
+  const db = getDB().filter(i=>i.category===cat);
+  const view=document.getElementById("view");
+
+  view.innerHTML=`
+    <h3>${cat}</h3>
+    <button class="btn" onclick="popup.style.display='block'">➕ Add</button>
+    <div class="grid" id="grid"></div>
+  `;
+
+  const grid=document.getElementById("grid");
+
+  db.forEach(item=>{
+
+    const card=document.createElement("div");
+    card.className="card item-box";
+
+    const qr=document.createElement("div");
+    new QRCode(qr,{
+      text:JSON.stringify(item),
+      width:60,
+      height:60
+    });
+
+    card.innerHTML=`
+      <b>${item.name}</b><br/>
+      💰 ${item.price}
+    `;
+
+    qr.className="qr-mini";
+    card.appendChild(qr);
+
+    card.onclick=()=>addToCart(item);
+
+    grid.appendChild(card);
+  });
+}
+
+/* ================= CART ================= */
+
+let cart=[];
+
+function addToCart(item){
+
+  let f=cart.find(x=>x.id===item.id);
+
+  if(f) f.qty++;
+  else cart.push({...item,qty:1});
+
+  alert(item.name+" added");
 }
 
 /* ================= SAVE ITEM ================= */
 
-async function saveItem() {
+function saveItem(){
 
-  const item = {
-    id: crypto.randomUUID(),
-    name: name.value,
-    price: Number(price.value),
-    discount: Number(discount.value),
-    category: category.value
+  const item={
+    id:crypto.randomUUID(),
+    name:name.value,
+    price:+price.value,
+    category:category.value
   };
 
-  item.finalPrice =
-    item.price - (item.price * item.discount / 100);
-
-  item.qrData = JSON.stringify(item);
-
-  const imageBlob = await (await fetch(imageData)).blob();
-
-  let folderId = localStorage.getItem("folder_" + item.category);
-
-  if (!folderId) {
-    const f = await createFolder(item.category);
-    folderId = f.id;
-    localStorage.setItem("folder_" + item.category, folderId);
-  }
-
-  // upload image
-  const imgFile = new File([imageBlob], item.id + ".png");
-  await uploadFile(imgFile, item.id + ".png", folderId);
-
-  // upload JSON
-  const jsonBlob = new Blob([item.qrData], {
-    type: "application/json"
-  });
-
-  await uploadFile(jsonBlob, item.id + ".json", folderId);
-
-  // local DB
-  let db = JSON.parse(localStorage.getItem("db") || "[]");
+  const db=getDB();
   db.push(item);
-  localStorage.setItem("db", JSON.stringify(db));
+  saveDB(db);
 
-  render();
-  closePopup();
+  popup.style.display="none";
+  renderCategories();
 }
 
-/* ================= RENDER ================= */
-
-function render() {
-
-  const list = document.getElementById("list");
-  list.innerHTML = "";
-
-  let db = JSON.parse(localStorage.getItem("db") || "[]");
-
-  const grid = document.createElement("div");
-  grid.className = "grid";
-
-  db.forEach(item => {
-
-    const card = document.createElement("div");
-    card.className = "card";
-
-    const qr = document.createElement("div");
-    qr.className = "qr";
-    new QRCode(qr, item.qrData);
-
-    card.innerHTML = `
-      <b>${item.name}</b><br/>
-      💰 ${item.finalPrice}<br/>
-      📂 ${item.category}
-    `;
-
-    card.appendChild(qr);
-    grid.appendChild(card);
-  });
-
-  list.appendChild(grid);
-}
-
-render();
-
-/* ================= POPUP ================= */
-
-function closePopup() {
-  popup.style.display = "none";
-}
-</script>
-
-<script>
-if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("service-worker.js");
-}
 </script>
 
 </body>
