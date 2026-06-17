@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Smart Shop Drive FIXED</title>
+<title>Smart Shop Drive v3</title>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -37,6 +37,12 @@ video,canvas{
   border-radius:8px;
   background:#2563eb;
   color:white;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.btn:active{
+  transform:scale(0.98);
+  opacity:0.7;
 }
 
 .grid{
@@ -86,13 +92,13 @@ img{
 
 <input id="clientId" placeholder="Google Client ID"/>
 
-<button class="btn" onclick="initGoogle()">Init Google OAuth</button>
+<button class="btn" onclick="initGoogle()">Init Google</button>
 <button class="btn" onclick="login()">Connect Drive</button>
 
 <video id="video" autoplay playsinline></video>
 
 <button class="btn" onclick="startCamera()">📷 Start Camera</button>
-<button class="btn" onclick="capture()">📸 Capture Item</button>
+<button class="btn" onclick="capture()">📸 Capture</button>
 
 <canvas id="canvas"></canvas>
 
@@ -114,7 +120,7 @@ img{
   <option>Electronics</option>
 </select>
 
-<button class="btn" onclick="saveItem()">Save to Drive</button>
+<button class="btn" onclick="saveItem()">Save</button>
 <button class="btn" onclick="popup.style.display='none'">Close</button>
 
 </div>
@@ -124,21 +130,19 @@ img{
 /* ================= AUTH ================= */
 
 let accessToken = "";
-let tokenClient = null;
+let tokenClient;
+let shopFolderId = "";
 
 function initGoogle(){
-
   tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: clientId.value,
     scope: "https://www.googleapis.com/auth/drive.file",
-    callback: (res)=>{
+    callback: async (res)=>{
       accessToken = res.access_token;
-      ensureShopFolder();
+      await ensureShopFolder();
       loadDashboard();
     }
   });
-
-  alert("Google OAuth ready");
 }
 
 function login(){
@@ -147,111 +151,119 @@ function login(){
 
 /* ================= CAMERA ================= */
 
-let imageData = "";
+let imageData="";
 
 async function startCamera(){
   const stream = await navigator.mediaDevices.getUserMedia({
     video:{facingMode:"environment"}
   });
-
   video.srcObject = stream;
 }
 
 function capture(){
-
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
-
-  const ctx = canvas.getContext("2d");
-  ctx.drawImage(video,0,0);
+  canvas.getContext("2d").drawImage(video,0,0);
 
   imageData = canvas.toDataURL("image/png");
-
   popup.style.display="block";
+}
+
+/* ================= SAFE IMAGE ================= */
+
+function loadImage(src){
+  return new Promise((res)=>{
+    const img=new Image();
+    img.onload=()=>res(img);
+    img.src=src;
+  });
 }
 
 /* ================= QR ================= */
 
 function makeQR(text){
   return new Promise(res=>{
-    const div=document.createElement("div");
-
-    new QRCode(div,{
-      text,
-      width:120,
-      height:120
-    });
-
+    const d=document.createElement("div");
+    new QRCode(d,{text,width:120,height:120});
     setTimeout(()=>{
-      const img=div.querySelector("img");
-
+      const img=d.querySelector("img");
       const c=document.createElement("canvas");
-      c.width=120;
-      c.height=120;
-
+      c.width=120;c.height=120;
       c.getContext("2d").drawImage(img,0,0);
-
       res(c.toDataURL("image/png"));
     },200);
   });
 }
 
-/* ================= IMAGE MERGE ================= */
+/* ================= MERGE ================= */
 
 async function merge(item){
 
-  const img=new Image();
-  img.src=imageData;
-  await new Promise(r=>img.onload=r);
+  const base = await loadImage(imageData);
+  const qr = await loadImage(await makeQR(JSON.stringify(item)));
 
   const c=document.createElement("canvas");
-  c.width=img.width;
-  c.height=img.height;
+  c.width=base.width;
+  c.height=base.height;
 
   const ctx=c.getContext("2d");
-  ctx.drawImage(img,0,0);
+  ctx.drawImage(base,0,0);
 
-  const qr=await makeQR(JSON.stringify(item));
+  const size = Math.min(c.width,c.height)*0.2;
 
-  const qrImg=new Image();
-  qrImg.src=qr;
-  await new Promise(r=>qrImg.onload=r);
-
-  ctx.drawImage(qrImg,c.width-140,c.height-140,120,120);
+  ctx.drawImage(qr,c.width-size-10,c.height-size-10,size,size);
 
   return c.toDataURL("image/png");
 }
 
-/* ================= DRIVE ROOT ================= */
-
-let shopFolderId = "";
+/* ================= ROOT (NO DUPLICATES) ================= */
 
 async function ensureShopFolder(){
 
-  if(shopFolderId) return shopFolderId;
+  let saved = localStorage.getItem("SHOP_ROOT");
+  if(saved){
+    shopFolderId = saved;
+    return;
+  }
+
+  const q = encodeURIComponent(
+    "name='TheShop' and mimeType='application/vnd.google-apps.folder' and trashed=false"
+  );
 
   const res = await fetch(
-    "https://www.googleapis.com/drive/v3/files",
-    {
-      method:"POST",
-      headers:{
-        Authorization:"Bearer "+accessToken,
-        "Content-Type":"application/json"
-      },
-      body:JSON.stringify({
-        name:"TheShop",
-        mimeType:"application/vnd.google-apps.folder"
-      })
-    }
+    `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)`,
+    {headers:{Authorization:"Bearer "+accessToken}}
   );
 
   const data = await res.json();
-  shopFolderId = data.id;
 
-  return shopFolderId;
+  if(data.files?.length){
+    shopFolderId = data.files[0].id;
+  } else {
+
+    const create = await fetch(
+      "https://www.googleapis.com/drive/v3/files",
+      {
+        method:"POST",
+        headers:{
+          Authorization:"Bearer "+accessToken,
+          "Content-Type":"application/json"
+        },
+        body:JSON.stringify({
+          name:"TheShop",
+          mimeType:"application/vnd.google-apps.folder"
+        })
+      }
+    );
+
+    const d = await create.json();
+    shopFolderId = d.id;
+  }
+
+  localStorage.setItem("SHOP_ROOT",shopFolderId);
 }
 
-/* ================= CATEGORY FOLDER (NO DUPLICATES FIXED) ================= */
+/* ================= CATEGORY ================= */
 
 async function getCategoryFolder(name){
 
@@ -266,9 +278,7 @@ async function getCategoryFolder(name){
 
   const data = await res.json();
 
-  if(data.files && data.files.length > 0){
-    return data.files[0].id;
-  }
+  if(data.files?.length) return data.files[0].id;
 
   const create = await fetch(
     "https://www.googleapis.com/drive/v3/files",
@@ -280,8 +290,8 @@ async function getCategoryFolder(name){
       },
       body:JSON.stringify({
         name,
-        mimeType:"application/vnd.google-apps.folder",
-        parents:[shopFolderId]
+        parents:[shopFolderId],
+        mimeType:"application/vnd.google-apps.folder"
       })
     }
   );
@@ -290,7 +300,7 @@ async function getCategoryFolder(name){
   return d.id;
 }
 
-/* ================= SAFE UPLOAD ================= */
+/* ================= UPLOAD ================= */
 
 async function upload(blob,name,folder){
 
@@ -303,7 +313,7 @@ async function upload(blob,name,folder){
 
   form.append("file",blob);
 
-  return fetch(
+  const res = await fetch(
     "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
     {
       method:"POST",
@@ -311,37 +321,29 @@ async function upload(blob,name,folder){
       body:form
     }
   );
+
+  return await res.json();
 }
 
-/* ================= SAVE ITEM ================= */
+/* ================= SAVE ================= */
 
 async function saveItem(){
 
-  const nameVal = document.getElementById("name").value;
-  const priceVal = document.getElementById("price").value;
-  const categoryVal = document.getElementById("category").value;
-
-  if(!nameVal) return alert("Name required");
-
   const item = {
     id: crypto.randomUUID(),
-    name: nameVal,
-    price: priceVal,
-    category: categoryVal
+    name: name.value,
+    price: price.value,
+    category: category.value
   };
 
-  const folder = await getCategoryFolder(categoryVal);
+  const folder = await getCategoryFolder(item.category);
 
   const img = await merge(item);
   const blob = await (await fetch(img)).blob();
 
-  const safeName = nameVal
-    .replace(/\s+/g,"_")
-    .replace(/[^a-zA-Z0-9_-]/g,"");
+  await upload(blob, item.name.replace(/\s+/g,"_")+".png", folder);
 
-  await upload(blob, safeName + ".png", folder);
-
-  popup.style.display = "none";
+  popup.style.display="none";
 
   loadDashboard();
 }
@@ -350,8 +352,6 @@ async function saveItem(){
 
 async function loadDashboard(){
 
-  if(!shopFolderId) return;
-
   const res = await fetch(
     `https://www.googleapis.com/drive/v3/files?q='${shopFolderId}'+in+parents&fields=files(id,name,mimeType)`,
     {headers:{Authorization:"Bearer "+accessToken}}
@@ -359,19 +359,59 @@ async function loadDashboard(){
 
   const data = await res.json();
 
-  let html = "<h3>📦 Categories</h3><div class='grid'>";
+  let html="<h3>📦 Categories</h3><div class='grid'>";
 
-  (data.files||[])
-    .filter(f=>f.mimeType.includes("folder"))
+  data.files
+    ?.filter(f=>f.mimeType.includes("folder"))
     .forEach(f=>{
-      html += `
-        <div class="card">
+      html+=`
+        <div class="card" onclick="openCategory('${f.id}','${f.name}')">
           📁 ${f.name}
         </div>
       `;
     });
 
-  view.innerHTML = html;
+  view.innerHTML=html;
+}
+
+/* ================= CATEGORY VIEW + DELETE ================= */
+
+async function openCategory(id,name){
+
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files?q='${id}'+in+parents&fields=files(id,name)`,
+    {headers:{Authorization:"Bearer "+accessToken}}
+  );
+
+  const data = await res.json();
+
+  let html=`<h3>${name}</h3><button class="btn" onclick="loadDashboard()">Back</button>`;
+
+  data.files?.forEach(f=>{
+    html+=`
+      <div class="card">
+        📄 ${f.name}
+        <button class="btn" onclick="deleteFile('${f.id}')">🗑 Delete</button>
+      </div>
+    `;
+  });
+
+  view.innerHTML=html;
+}
+
+/* ================= DELETE FROM DRIVE ================= */
+
+async function deleteFile(id){
+
+  await fetch(
+    `https://www.googleapis.com/drive/v3/files/${id}`,
+    {
+      method:"DELETE",
+      headers:{Authorization:"Bearer "+accessToken}
+    }
+  );
+
+  loadDashboard();
 }
 
 </script>
