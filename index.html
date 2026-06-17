@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Smart Shop Drive v2</title>
+<title>Smart Shop Drive v2 FIXED</title>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -70,12 +70,17 @@ input,select{
   padding:8px;
   margin:5px 0;
 }
+
+img{
+  width:100%;
+  border-radius:10px;
+}
 </style>
 </head>
 
 <body>
 
-<header>📦 Smart Shop Drive v2 (Stable)</header>
+<header>📦 Smart Shop Drive v2 FIXED</header>
 
 <div class="container">
 
@@ -116,29 +121,21 @@ input,select{
 
 <script>
 
-/* ================= TOKEN ================= */
+/* ================= AUTH ================= */
 
 let accessToken = "";
-
-function setToken(t){ accessToken = t; }
-function getToken(){ return accessToken; }
-
-/* ================= GOOGLE AUTH ================= */
-
 let tokenClient;
 
 function initGoogle(){
-
   tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: clientId.value,
     scope: "https://www.googleapis.com/auth/drive.file",
-    callback: (resp) => {
-      setToken(resp.access_token);
-      console.log("TOKEN OK");
+    callback: (resp)=>{
+      accessToken = resp.access_token;
+      ensureShopFolder();
+      loadDashboard();
     }
   });
-
-  alert("OAuth ready");
 }
 
 function login(){
@@ -147,271 +144,230 @@ function login(){
 
 /* ================= CAMERA ================= */
 
+let imageData="";
+
 async function startCamera(){
   const stream = await navigator.mediaDevices.getUserMedia({
     video:{facingMode:"environment"}
   });
-
   video.srcObject = stream;
 }
 
-/* ================= CAPTURE ================= */
-
-let imageData = "";
-
 function capture(){
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
 
-  const c = canvas;
-  const ctx = c.getContext("2d");
-
-  c.width = video.videoWidth;
-  c.height = video.videoHeight;
-
+  const ctx = canvas.getContext("2d");
   ctx.drawImage(video,0,0);
 
-  imageData = c.toDataURL("image/png");
-
-  popup.style.display = "block";
+  imageData = canvas.toDataURL("image/png");
+  popup.style.display="block";
 }
 
-/* ================= QR GENERATOR ================= */
+/* ================= QR ================= */
 
 function makeQR(text){
-
-  return new Promise(resolve=>{
-
-    const temp = document.createElement("div");
-
-    new QRCode(temp,{
-      text,
-      width:120,
-      height:120
-    });
-
+  return new Promise(res=>{
+    const d=document.createElement("div");
+    new QRCode(d,{text,width:120,height:120});
     setTimeout(()=>{
-
-      const img = temp.querySelector("img");
-
-      const c = document.createElement("canvas");
-      const ctx = c.getContext("2d");
-
-      c.width = 120;
-      c.height = 120;
-
-      ctx.drawImage(img,0,0,120,120);
-
-      resolve(c);
-
-    },300);
+      const img=d.querySelector("img");
+      const c=document.createElement("canvas");
+      c.width=120;c.height=120;
+      c.getContext("2d").drawImage(img,0,0);
+      res(c.toDataURL("image/png"));
+    },200);
   });
 }
 
-/* ================= EMBED QR INTO IMAGE ================= */
+/* ================= MERGE IMAGE ================= */
 
 async function merge(item){
 
-  const img = new Image();
-  img.src = imageData;
-
+  const img=new Image();
+  img.src=imageData;
   await new Promise(r=>img.onload=r);
 
-  const c = document.createElement("canvas");
-  const ctx = c.getContext("2d");
+  const c=document.createElement("canvas");
+  c.width=img.width;
+  c.height=img.height;
 
-  c.width = img.width;
-  c.height = img.height;
-
+  const ctx=c.getContext("2d");
   ctx.drawImage(img,0,0);
 
-  const qr = await makeQR(JSON.stringify(item));
-
-  ctx.drawImage(qr,c.width-140,c.height-140,120,120);
+  const qr=await makeQR(JSON.stringify(item));
+  ctx.drawImage(await loadImg(qr),c.width-140,c.height-140,120,120);
 
   return c.toDataURL("image/png");
 }
 
-/* ================= DRIVE UPLOADER v2 ================= */
-
-class DriveUploader {
-
-  constructor(getToken){
-    this.getToken = getToken;
-    this.queue = [];
-    this.running = false;
-  }
-
-  add(file,name,folder){
-    this.queue.push({file,name,folder,tries:0});
-    this.run();
-  }
-
-  async run(){
-
-    if(this.running) return;
-    this.running = true;
-
-    while(this.queue.length){
-
-      const job = this.queue[0];
-
-      try{
-        await this.upload(job);
-        this.queue.shift();
-      }catch(e){
-
-        console.error(e);
-
-        job.tries++;
-
-        if(job.tries >= 3){
-          this.queue.shift();
-        }else{
-          await new Promise(r=>setTimeout(r,2000));
-        }
-      }
-    }
-
-    this.running = false;
-  }
-
-  async upload({file,name,folder}){
-
-    const token = this.getToken();
-    if(!token) throw new Error("NO TOKEN");
-
-    const meta = {
-      name,
-      parents:[folder]
-    };
-
-    const form = new FormData();
-
-    form.append("metadata", new Blob([JSON.stringify(meta)],{
-      type:"application/json"
-    }));
-
-    form.append("file", file);
-
-    const res = await fetch(
-      "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
-      {
-        method:"POST",
-        headers:{
-          Authorization:"Bearer "+token
-        },
-        body:form
-      }
-    );
-
-    if(!res.ok){
-      throw new Error(await res.text());
-    }
-
-    return await res.json();
-  }
+function loadImg(src){
+  return new Promise(r=>{
+    const i=new Image();
+    i.src=src;
+    i.onload=()=>r(i);
+  });
 }
 
-const drive = new DriveUploader(getToken);
+/* ================= DRIVE STRUCTURE ================= */
 
-/* ================= FOLDER ================= */
+let shopFolderId="";
 
-async function getFolder(name){
+async function ensureShopFolder(){
 
-  let id = localStorage.getItem("f_"+name);
-  if(id) return id;
+  if(shopFolderId) return shopFolderId;
 
-  const res = await fetch("https://www.googleapis.com/drive/v3/files",{
+  const res=await fetch("https://www.googleapis.com/drive/v3/files",{
     method:"POST",
     headers:{
-      "Authorization":"Bearer "+getToken(),
+      Authorization:"Bearer "+accessToken,
       "Content-Type":"application/json"
     },
     body:JSON.stringify({
-      name,
+      name:"TheShop",
       mimeType:"application/vnd.google-apps.folder"
     })
   });
 
-  const data = await res.json();
+  const data=await res.json();
+  shopFolderId=data.id;
+}
 
-  localStorage.setItem("f_"+name,data.id);
+/* ================= CATEGORY FOLDER ================= */
 
-  return data.id;
+async function getCategoryFolder(name){
+
+  const res=await fetch("https://www.googleapis.com/drive/v3/files?q=name='"+name+"' and '"+shopFolderId+"' in parents",{
+    headers:{Authorization:"Bearer "+accessToken}
+  });
+
+  const data=await res.json();
+
+  if(data.files?.length){
+    return data.files[0].id;
+  }
+
+  const create=await fetch("https://www.googleapis.com/drive/v3/files",{
+    method:"POST",
+    headers:{
+      Authorization:"Bearer "+accessToken,
+      "Content-Type":"application/json"
+    },
+    body:JSON.stringify({
+      name,
+      parents:[shopFolderId],
+      mimeType:"application/vnd.google-apps.folder"
+    })
+  });
+
+  const d=await create.json();
+  return d.id;
+}
+
+/* ================= UPLOAD ================= */
+
+async function upload(blob,name,folder){
+
+  const form=new FormData();
+
+  form.append("metadata",new Blob([JSON.stringify({
+    name,
+    parents:[folder]
+  })],{type:"application/json"}));
+
+  form.append("file",blob);
+
+  return fetch(
+    "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
+    {
+      method:"POST",
+      headers:{Authorization:"Bearer "+accessToken},
+      body:form
+    }
+  );
 }
 
 /* ================= SAVE ITEM ================= */
 
 async function saveItem(){
 
-  const item = {
+  const item={
     id:crypto.randomUUID(),
     name:name.value,
     price:+price.value,
     category:category.value
   };
 
-  const img = await merge(item);
+  const folder=await getCategoryFolder(item.category);
 
-  const folder = await getFolder(item.category);
+  const img=await merge(item);
 
-  drive.add(new Blob([img]), item.id+".png", folder);
-  drive.add(new Blob([JSON.stringify(item)]), item.id+".json", folder);
+  const blob=await (await fetch(img)).blob();
 
-  let db = JSON.parse(localStorage.getItem("db")||"[]");
-  db.push({...item,image:img});
-  localStorage.setItem("db",JSON.stringify(db));
+  await upload(blob,item.name+".png",folder);
+
+  await upload(
+    new Blob([JSON.stringify(item)],{type:"application/json"}),
+    item.name+".json",
+    folder
+  );
 
   popup.style.display="none";
-  render();
+
+  loadDashboard();
 }
 
-/* ================= DASHBOARD ================= */
+/* ================= DASHBOARD FROM DRIVE ================= */
 
-function render(){
+async function loadDashboard(){
 
-  const db = JSON.parse(localStorage.getItem("db")||"[]");
-  const cats = [...new Set(db.map(i=>i.category))];
+  if(!shopFolderId) return;
 
-  let html = "<h3>📊 Dashboard</h3><div class='grid'>";
+  const res=await fetch(
+    `https://www.googleapis.com/drive/v3/files?q='${shopFolderId}'+in+parents&fields=files(id,name,mimeType)`,
+    {headers:{Authorization:"Bearer "+accessToken}}
+  );
 
-  cats.forEach(c=>{
-    html += `
-      <div class="card" onclick="openCat('${c}')">
-        <b>${c}</b><br/>
-        ${db.filter(i=>i.category===c).length} items
-      </div>
-    `;
-  });
+  const data=await res.json();
 
-  view.innerHTML = html;
+  let html="<h3>📊 Categories</h3><div class='grid'>";
+
+  (data.files||[])
+    .filter(f=>f.mimeType.includes("folder"))
+    .forEach(f=>{
+      html+=`
+        <div class="card" onclick="openCategory('${f.id}','${f.name}')">
+          📁 ${f.name}
+        </div>
+      `;
+    });
+
+  view.innerHTML=html;
 }
 
-/* ================= CATEGORY ================= */
+/* ================= CATEGORY VIEW ================= */
 
-function openCat(cat){
+async function openCategory(id,name){
 
-  const db = JSON.parse(localStorage.getItem("db")||"[]")
-    .filter(i=>i.category===cat);
+  const res=await fetch(
+    `https://www.googleapis.com/drive/v3/files?q='${id}'+in+parents&fields=files(id,name,mimeType)`,
+    {headers:{Authorization:"Bearer "+accessToken}}
+  );
 
-  let html = `
-    <h3>${cat}</h3>
-    <button class="btn" onclick="render()">Back</button>
-  `;
+  const data=await res.json();
 
-  db.forEach(i=>{
-    html += `
+  let html=`<h3>${name}</h3><button class="btn" onclick="loadDashboard()">Back</button>`;
+
+  (data.files||[]).forEach(f=>{
+    html+=`
       <div class="card">
-        <img src="${i.image}" style="width:100%;border-radius:10px"/>
-        <b>${i.name}</b><br/>
-        💰 ${i.price}
+        📄 ${f.name}
       </div>
     `;
   });
 
-  view.innerHTML = html;
+  view.innerHTML=html;
 }
-
-render();
 
 </script>
 
