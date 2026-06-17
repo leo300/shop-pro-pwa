@@ -3,34 +3,90 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Smart Shop Drive FIX</title>
+<title>Smart Shop Drive</title>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 
 <style>
-body{margin:0;font-family:Arial;background:#0f172a;color:white}
-.container{padding:10px}
-video,canvas{width:100%;border-radius:10px}
-.btn{width:100%;padding:10px;margin-top:8px;border:none;border-radius:8px;background:#2563eb;color:white}
-.popup{position:fixed;top:10%;left:5%;width:90%;background:white;color:black;padding:10px;border-radius:10px;display:none}
-input,select{width:100%;padding:8px;margin:5px 0}
-.card{background:#1f2937;padding:10px;border-radius:10px;margin-top:10px}
+body{
+  margin:0;
+  font-family:Arial;
+  background:#0f172a;
+  color:white;
+}
+
+header{
+  padding:12px;
+  background:#111827;
+  font-weight:bold;
+}
+
+.container{padding:10px;}
+
+video, canvas{
+  width:100%;
+  border-radius:10px;
+}
+
+.btn{
+  width:100%;
+  padding:10px;
+  margin-top:8px;
+  border:none;
+  border-radius:8px;
+  background:#2563eb;
+  color:white;
+}
+
+.grid{
+  display:grid;
+  grid-template-columns:repeat(2,1fr);
+  gap:10px;
+}
+
+.card{
+  background:#1f2937;
+  padding:10px;
+  border-radius:10px;
+  cursor:pointer;
+}
+
+.popup{
+  position:fixed;
+  top:10%;
+  left:5%;
+  width:90%;
+  background:white;
+  color:black;
+  padding:10px;
+  border-radius:10px;
+  display:none;
+  z-index:10;
+}
+
+input,select{
+  width:100%;
+  padding:8px;
+  margin:5px 0;
+}
 </style>
 </head>
 
 <body>
 
-<div class="container">
+<header>📦 Smart Shop Drive System</header>
 
-<h3>📦 Smart Shop Drive (FIXED)</h3>
+<div class="container">
 
 <input id="clientId" placeholder="Google Client ID"/>
 
+<button class="btn" onclick="initGoogle()">Init Google</button>
+
 <video id="video" autoplay playsinline></video>
 
-<button class="btn" onclick="startCamera()">📷 Start Camera</button>
-<button class="btn" onclick="capture()">📸 Capture Item</button>
+<button class="btn" onclick="startCamera()">📷 Scan Product</button>
+<button class="btn" onclick="capture()">📸 Capture</button>
 
 <canvas id="canvas"></canvas>
 
@@ -41,7 +97,7 @@ input,select{width:100%;padding:8px;margin:5px 0}
 <!-- POPUP -->
 <div class="popup" id="popup">
 
-<h3>Item</h3>
+<h3>Add Item</h3>
 
 <input id="name" placeholder="Name"/>
 <input id="price" type="number" placeholder="Price"/>
@@ -52,195 +108,243 @@ input,select{width:100%;padding:8px;margin:5px 0}
   <option>Electronics</option>
 </select>
 
-<button class="btn" onclick="save()">SAVE + UPLOAD</button>
+<button class="btn" onclick="saveItem()">Save & Upload</button>
 <button class="btn" onclick="popup.style.display='none'">Close</button>
 
 </div>
 
 <script>
 
-let token=""
-let imageData=""
+let token = "";
+let imageData = "";
 
-/* ================= CAMERA ================= */
-
-async function startCamera(){
-  const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}})
-  video.srcObject=stream
-}
-
-/* ================= CAPTURE ================= */
-
-function capture(){
-  const c=canvas
-  const ctx=c.getContext("2d")
-
-  c.width=video.videoWidth
-  c.height=video.videoHeight
-
-  ctx.drawImage(video,0,0)
-
-  imageData=c.toDataURL("image/png")
-
-  popup.style.display="block"
-}
-
-/* ================= GOOGLE AUTO AUTH (NO BUTTON) ================= */
+/* ================= GOOGLE AUTH ================= */
 
 function initGoogle(){
   google.accounts.id.initialize({
     client_id: clientId.value,
-    callback: res=>token=res.credential
-  })
+    callback: res => token = res.credential
+  });
 
-  google.accounts.id.prompt() // auto popup (NO login button UI)
+  google.accounts.id.prompt(); // silent popup
 }
 
-initGoogle()
+/* ================= CAMERA ================= */
 
-/* ================= QR BURN INTO IMAGE ================= */
+async function startCamera(){
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video:{facingMode:"environment"}
+  });
 
-async function makeImage(item){
+  video.srcObject = stream;
+}
 
-  const base=new Image()
-  base.src=imageData
+/* ================= CAPTURE IMAGE ================= */
 
-  await new Promise(r=>base.onload=r)
+function capture(){
 
-  const c=document.createElement("canvas")
-  const ctx=c.getContext("2d")
+  const c = canvas;
+  const ctx = c.getContext("2d");
 
-  c.width=base.width
-  c.height=base.height
+  c.width = video.videoWidth;
+  c.height = video.videoHeight;
 
-  ctx.drawImage(base,0,0)
+  ctx.drawImage(video,0,0);
 
-  const qr=document.createElement("canvas")
+  imageData = c.toDataURL("image/png");
 
-  new QRCode(qr,{
-    text:JSON.stringify(item),
-    width:120,
-    height:120
-  })
+  popup.style.display = "block";
+}
 
-  await new Promise(r=>setTimeout(r,300))
+/* ================= QR CANVAS ================= */
 
-  ctx.drawImage(qr,c.width-140,c.height-140,120,120)
+function createQRCanvas(text){
 
-  return c.toDataURL("image/png")
+  return new Promise(resolve=>{
+
+    const temp = document.createElement("div");
+
+    new QRCode(temp,{
+      text,
+      width:120,
+      height:120
+    });
+
+    setTimeout(()=>{
+
+      const img = temp.querySelector("img");
+
+      const c = document.createElement("canvas");
+      const ctx = c.getContext("2d");
+
+      c.width = 120;
+      c.height = 120;
+
+      ctx.drawImage(img,0,0,120,120);
+
+      resolve(c);
+
+    },300);
+  });
+}
+
+/* ================= EMBED QR INTO IMAGE ================= */
+
+async function mergeQR(item){
+
+  const img = new Image();
+  img.src = imageData;
+
+  await new Promise(r=>img.onload=r);
+
+  const c = document.createElement("canvas");
+  const ctx = c.getContext("2d");
+
+  c.width = img.width;
+  c.height = img.height;
+
+  ctx.drawImage(img,0,0);
+
+  const qr = await createQRCanvas(JSON.stringify(item));
+
+  ctx.drawImage(qr,c.width-140,c.height-140,120,120);
+
+  return c.toDataURL("image/png");
 }
 
 /* ================= DRIVE UPLOAD ================= */
 
-async function upload(blob,name,folder){
+async function upload(blob,name,folderId){
 
-  const form=new FormData()
+  const form = new FormData();
 
-  form.append("metadata",new Blob([JSON.stringify({
+  form.append("metadata", new Blob([JSON.stringify({
     name,
-    parents:[folder]
-  })],{type:"application/json"}))
+    parents:[folderId]
+  })], {type:"application/json"}));
 
-  form.append("file",blob)
+  form.append("file", blob);
 
   return fetch(
     "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
     {
       method:"POST",
-      headers:{Authorization:"Bearer "+token},
+      headers:{
+        Authorization:"Bearer "+token
+      },
       body:form
     }
-  )
+  );
 }
 
-/* ================= SAVE ================= */
+/* ================= FOLDER ================= */
 
-async function save(){
+async function getFolder(name){
 
-  const item={
-    id:crypto.randomUUID(),
-    name:name.value,
-    price:+price.value,
-    category:category.value
-  }
+  let f = localStorage.getItem("folder_"+name);
+  if(f) return f;
 
-  const finalImage=await makeImage(item)
+  const res = await fetch("https://www.googleapis.com/drive/v3/files",{
+    method:"POST",
+    headers:{
+      "Authorization":"Bearer "+token,
+      "Content-Type":"application/json"
+    },
+    body:JSON.stringify({
+      name,
+      mimeType:"application/vnd.google-apps.folder"
+    })
+  });
 
-  let folder=localStorage.getItem("f_"+item.category)
+  const data = await res.json();
 
-  if(!folder){
+  localStorage.setItem("folder_"+name,data.id);
 
-    const f=await fetch("https://www.googleapis.com/drive/v3/files",{
-      method:"POST",
-      headers:{
-        "Authorization":"Bearer "+token,
-        "Content-Type":"application/json"
-      },
-      body:JSON.stringify({
-        name:item.category,
-        mimeType:"application/vnd.google-apps.folder"
-      })
-    }).then(r=>r.json())
+  return data.id;
+}
 
-    folder=f.id
-    localStorage.setItem("f_"+item.category,folder)
-  }
+/* ================= SAVE FLOW ================= */
 
-  await upload(new Blob([finalImage]),item.id+".png",folder)
-  await upload(new Blob([JSON.stringify(item)]),item.id+".json",folder)
+async function saveItem(){
 
-  let db=JSON.parse(localStorage.getItem("db")||"[]")
-  db.push({...item,image:finalImage})
-  localStorage.setItem("db",JSON.stringify(db))
+  const item = {
+    id: crypto.randomUUID(),
+    name: name.value,
+    price: +price.value,
+    category: category.value
+  };
 
-  popup.style.display="none"
-  render()
+  const finalImage = await mergeQR(item);
+
+  const folder = await getFolder(item.category);
+
+  await upload(
+    new Blob([finalImage]),
+    item.id+".png",
+    folder
+  );
+
+  await upload(
+    new Blob([JSON.stringify(item)]),
+    item.id+".json",
+    folder
+  );
+
+  let db = JSON.parse(localStorage.getItem("db")||"[]");
+  db.push({...item,image:finalImage});
+  localStorage.setItem("db",JSON.stringify(db));
+
+  popup.style.display="none";
+  render();
 }
 
 /* ================= DASHBOARD ================= */
 
 function render(){
 
-  const db=JSON.parse(localStorage.getItem("db")||"[]")
-  const cats=[...new Set(db.map(i=>i.category))]
+  const db = JSON.parse(localStorage.getItem("db")||"[]");
+  const cats = [...new Set(db.map(i=>i.category))];
 
-  let html="<h3>📊 Dashboard</h3>"
+  let html = "<h3>📊 Dashboard</h3><div class='grid'>";
 
   cats.forEach(c=>{
-    html+=`
+    html += `
       <div class="card" onclick="openCat('${c}')">
         <b>${c}</b><br/>
         ${db.filter(i=>i.category===c).length} items
       </div>
-    `
-  })
+    `;
+  });
 
-  view.innerHTML=html
+  view.innerHTML = html;
 }
 
 /* ================= CATEGORY ================= */
 
 function openCat(cat){
 
-  const db=JSON.parse(localStorage.getItem("db")||"[]")
-    .filter(i=>i.category===cat)
+  const db = JSON.parse(localStorage.getItem("db")||"[]")
+    .filter(i=>i.category===cat);
 
-  let html=`<h3>${cat}</h3><button class="btn" onclick="render()">Back</button>`
+  let html = `
+    <h3>${cat}</h3>
+    <button class="btn" onclick="render()">Back</button>
+  `;
 
   db.forEach(i=>{
-    html+=`
+    html += `
       <div class="card">
+        <img src="${i.image}" style="width:100%;border-radius:10px"/>
         <b>${i.name}</b><br/>
         💰 ${i.price}
-        <img src="${i.image}" style="width:100%;margin-top:5px;border-radius:10px"/>
       </div>
-    `
-  })
+    `;
+  });
 
-  view.innerHTML=html
+  view.innerHTML = html;
 }
 
-render()
+render();
 
 </script>
 
