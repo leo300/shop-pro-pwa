@@ -1,6 +1,6 @@
 {
-  "name": "Shop Pro Drive System",
-  "short_name": "ShopPro",
+  "name": "Smart Shop Drive PRO",
+  "short_name": "ShopPRO",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#0f172a",
