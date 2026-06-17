@@ -328,11 +328,20 @@ async function getCategoryFolder(name){
 
 async function saveItem(){
 
+  const nameVal = document.getElementById("name").value;
+  const priceVal = document.getElementById("price").value;
+  const categoryVal = document.getElementById("category").value;
+
+  if(!nameVal){
+    alert("Product name is required");
+    return;
+  }
+
   const item = {
     id: crypto.randomUUID(),
-    name: name.value,
-    price: price.value,
-    category: category.value
+    name: nameVal,
+    price: priceVal,
+    category: categoryVal
   };
 
   const folder = await getCategoryFolder(item.category);
@@ -340,26 +349,33 @@ async function saveItem(){
   const img = await merge(item);
   const blob = await (await fetch(img)).blob();
 
-  const safe = item.name.replace(/\s+/g,"_");
+  const safe = (item.name || "product")
+    .replace(/\s+/g,"_")
+    .replace(/[^a-zA-Z0-9_-]/g,"");
 
   await fetch(
     "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
     {
       method:"POST",
-      headers:{Authorization:"Bearer "+accessToken},
+      headers:{
+        Authorization:"Bearer "+accessToken
+      },
       body:(()=>{
-        const f=new FormData();
-        f.append("metadata",new Blob([JSON.stringify({
-          name:safe+".png",
+        const f = new FormData();
+
+        f.append("metadata", new Blob([JSON.stringify({
+          name: safe + ".png",
           parents:[folder]
         })],{type:"application/json"}));
-        f.append("file",blob);
+
+        f.append("file", blob);
+
         return f;
       })()
     }
   );
 
-  popup.style.display="none";
+  popup.style.display = "none";
   loadDashboard();
 }
 
