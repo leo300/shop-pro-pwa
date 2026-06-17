@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Smart Shop Drive PRO</title>
+<title>Smart Shop Drive v2</title>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -24,7 +24,7 @@ header{
 
 .container{padding:10px;}
 
-video, canvas{
+video,canvas{
   width:100%;
   border-radius:10px;
 }
@@ -75,7 +75,7 @@ input,select{
 
 <body>
 
-<header>📦 Smart Shop Drive PRO (FIXED)</header>
+<header>📦 Smart Shop Drive v2 (Stable)</header>
 
 <div class="container">
 
@@ -87,7 +87,7 @@ input,select{
 <video id="video" autoplay playsinline></video>
 
 <button class="btn" onclick="startCamera()">📷 Start Camera</button>
-<button class="btn" onclick="capture()">📸 Capture Item</button>
+<button class="btn" onclick="capture()">📸 Capture</button>
 
 <canvas id="canvas"></canvas>
 
@@ -116,10 +116,14 @@ input,select{
 
 <script>
 
-let token = "";
-let imageData = "";
+/* ================= TOKEN ================= */
 
-/* ================= GOOGLE OAUTH (FIXED) ================= */
+let accessToken = "";
+
+function setToken(t){ accessToken = t; }
+function getToken(){ return accessToken; }
+
+/* ================= GOOGLE AUTH ================= */
 
 let tokenClient;
 
@@ -129,12 +133,12 @@ function initGoogle(){
     client_id: clientId.value,
     scope: "https://www.googleapis.com/auth/drive.file",
     callback: (resp) => {
-      token = resp.access_token;
-      console.log("TOKEN OK", token);
+      setToken(resp.access_token);
+      console.log("TOKEN OK");
     }
   });
 
-  alert("OAuth initialized");
+  alert("OAuth ready");
 }
 
 function login(){
@@ -153,6 +157,8 @@ async function startCamera(){
 
 /* ================= CAPTURE ================= */
 
+let imageData = "";
+
 function capture(){
 
   const c = canvas;
@@ -168,11 +174,11 @@ function capture(){
   popup.style.display = "block";
 }
 
-/* ================= QR CANVAS FIX ================= */
+/* ================= QR GENERATOR ================= */
 
 function makeQR(text){
 
-  return new Promise(resolve => {
+  return new Promise(resolve=>{
 
     const temp = document.createElement("div");
 
@@ -182,7 +188,8 @@ function makeQR(text){
       height:120
     });
 
-    setTimeout(() => {
+    setTimeout(()=>{
+
       const img = temp.querySelector("img");
 
       const c = document.createElement("canvas");
@@ -199,14 +206,14 @@ function makeQR(text){
   });
 }
 
-/* ================= MERGE QR INTO IMAGE ================= */
+/* ================= EMBED QR INTO IMAGE ================= */
 
-async function mergeImage(item){
+async function merge(item){
 
   const img = new Image();
   img.src = imageData;
 
-  await new Promise(r => img.onload = r);
+  await new Promise(r=>img.onload=r);
 
   const c = document.createElement("canvas");
   const ctx = c.getContext("2d");
@@ -223,17 +230,100 @@ async function mergeImage(item){
   return c.toDataURL("image/png");
 }
 
-/* ================= DRIVE FOLDER ================= */
+/* ================= DRIVE UPLOADER v2 ================= */
+
+class DriveUploader {
+
+  constructor(getToken){
+    this.getToken = getToken;
+    this.queue = [];
+    this.running = false;
+  }
+
+  add(file,name,folder){
+    this.queue.push({file,name,folder,tries:0});
+    this.run();
+  }
+
+  async run(){
+
+    if(this.running) return;
+    this.running = true;
+
+    while(this.queue.length){
+
+      const job = this.queue[0];
+
+      try{
+        await this.upload(job);
+        this.queue.shift();
+      }catch(e){
+
+        console.error(e);
+
+        job.tries++;
+
+        if(job.tries >= 3){
+          this.queue.shift();
+        }else{
+          await new Promise(r=>setTimeout(r,2000));
+        }
+      }
+    }
+
+    this.running = false;
+  }
+
+  async upload({file,name,folder}){
+
+    const token = this.getToken();
+    if(!token) throw new Error("NO TOKEN");
+
+    const meta = {
+      name,
+      parents:[folder]
+    };
+
+    const form = new FormData();
+
+    form.append("metadata", new Blob([JSON.stringify(meta)],{
+      type:"application/json"
+    }));
+
+    form.append("file", file);
+
+    const res = await fetch(
+      "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
+      {
+        method:"POST",
+        headers:{
+          Authorization:"Bearer "+token
+        },
+        body:form
+      }
+    );
+
+    if(!res.ok){
+      throw new Error(await res.text());
+    }
+
+    return await res.json();
+  }
+}
+
+const drive = new DriveUploader(getToken);
+
+/* ================= FOLDER ================= */
 
 async function getFolder(name){
 
-  let id = localStorage.getItem("folder_"+name);
+  let id = localStorage.getItem("f_"+name);
   if(id) return id;
 
   const res = await fetch("https://www.googleapis.com/drive/v3/files",{
     method:"POST",
     headers:{
-      "Authorization":"Bearer "+token,
+      "Authorization":"Bearer "+getToken(),
       "Content-Type":"application/json"
     },
     body:JSON.stringify({
@@ -244,56 +334,31 @@ async function getFolder(name){
 
   const data = await res.json();
 
-  localStorage.setItem("folder_"+name,data.id);
+  localStorage.setItem("f_"+name,data.id);
 
   return data.id;
 }
 
-/* ================= UPLOAD ================= */
-
-async function upload(blob,name,folder){
-
-  const form = new FormData();
-
-  form.append("metadata", new Blob([JSON.stringify({
-    name,
-    parents:[folder]
-  })],{type:"application/json"}));
-
-  form.append("file", blob);
-
-  return fetch(
-    "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
-    {
-      method:"POST",
-      headers:{
-        "Authorization":"Bearer "+token
-      },
-      body:form
-    }
-  );
-}
-
-/* ================= SAVE FLOW ================= */
+/* ================= SAVE ITEM ================= */
 
 async function saveItem(){
 
   const item = {
-    id: crypto.randomUUID(),
-    name: name.value,
-    price: +price.value,
-    category: category.value
+    id:crypto.randomUUID(),
+    name:name.value,
+    price:+price.value,
+    category:category.value
   };
 
-  const finalImage = await mergeImage(item);
+  const img = await merge(item);
 
   const folder = await getFolder(item.category);
 
-  await upload(new Blob([finalImage]), item.id+".png", folder);
-  await upload(new Blob([JSON.stringify(item)]), item.id+".json", folder);
+  drive.add(new Blob([img]), item.id+".png", folder);
+  drive.add(new Blob([JSON.stringify(item)]), item.id+".json", folder);
 
   let db = JSON.parse(localStorage.getItem("db")||"[]");
-  db.push({...item,image:finalImage});
+  db.push({...item,image:img});
   localStorage.setItem("db",JSON.stringify(db));
 
   popup.style.display="none";
@@ -321,7 +386,7 @@ function render(){
   view.innerHTML = html;
 }
 
-/* ================= CATEGORY VIEW ================= */
+/* ================= CATEGORY ================= */
 
 function openCat(cat){
 
