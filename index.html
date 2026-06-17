@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Scan + Drive POS</title>
+<title>Shop Scan Drive POS</title>
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -16,32 +16,49 @@ body{
   color:white;
 }
 
+/* HEADER */
 .header{
   padding:12px;
   background:#111827;
+  font-weight:bold;
 }
 
+/* CONTAINER */
 .container{padding:10px;}
 
-video{
-  width:100%;
-  border-radius:10px;
-}
-
+/* BUTTONS */
 .btn{
   width:100%;
   padding:10px;
   margin-top:6px;
   border:none;
   border-radius:8px;
+  font-size:14px;
 }
 
+/* INPUT */
+input,select{
+  width:100%;
+  padding:8px;
+  margin:5px 0;
+  border-radius:6px;
+  border:none;
+}
+
+/* CAMERA */
+video{
+  width:100%;
+  border-radius:10px;
+}
+
+/* GRID */
 .grid{
   display:grid;
   grid-template-columns:repeat(2,1fr);
   gap:10px;
 }
 
+/* CARD */
 .card{
   background:#1f2937;
   padding:10px;
@@ -49,11 +66,11 @@ video{
   position:relative;
 }
 
-/* QR inside image corner */
+/* QR SMALL OVERLAY */
 .qr{
   position:absolute;
-  bottom:5px;
-  right:5px;
+  bottom:6px;
+  right:6px;
   width:60px;
   height:60px;
   background:white;
@@ -61,6 +78,7 @@ video{
   border-radius:6px;
 }
 
+/* POPUP */
 .popup{
   position:fixed;
   top:10%;
@@ -73,28 +91,32 @@ video{
   display:none;
   z-index:10;
 }
-
-input,select{
-  width:100%;
-  padding:8px;
-  margin:5px 0;
-}
 </style>
 </head>
 
 <body>
 
-<div class="header">📷 Scan + Drive POS</div>
+<div class="header">📦 Scan + Drive POS System</div>
 
 <div class="container">
 
-<button class="btn" id="loginBtn">🔐 Google Login</button>
+<!-- CLIENT ID -->
+<div class="card">
+  <h3>🔑 Google Client ID</h3>
+  <input id="clientIdInput" placeholder="Paste YOUR_CLIENT_ID.apps.googleusercontent.com">
+  <button class="btn" onclick="saveClientId()">Save Client ID</button>
+</div>
 
+<button class="btn" onclick="initGoogle()">Initialize Google</button>
+<button class="btn" onclick="login()">Login</button>
+
+<!-- CAMERA -->
 <video id="video" autoplay></video>
-<button class="btn" onclick="capture()">📸 Capture Item</button>
+<button class="btn" onclick="capture()">📸 Scan Item</button>
 
 <canvas id="canvas" style="display:none;"></canvas>
 
+<!-- DASHBOARD -->
 <div id="view"></div>
 
 </div>
@@ -104,8 +126,8 @@ input,select{
 
 <h3>Item Form</h3>
 
-<input id="name" placeholder="Name"/>
-<input id="price" type="number" placeholder="Price"/>
+<input id="name" placeholder="Name">
+<input id="price" type="number" placeholder="Price">
 
 <select id="category">
   <option>Food</option>
@@ -113,68 +135,98 @@ input,select{
   <option>Electronics</option>
 </select>
 
-<button class="btn" onclick="saveItem()">💾 Save + Upload</button>
+<button class="btn" onclick="saveItem()">💾 Save to Drive</button>
 <button class="btn" onclick="popup.style.display='none'">Close</button>
 
 </div>
 
 <script>
 
-let token="";
-let imageData="";
+/* ================= GLOBALS ================= */
 
-/* ================= GOOGLE LOGIN ================= */
+let CLIENT_ID = "";
+let token = "";
+let imageData = "";
 
-const CLIENT_ID="YOUR_CLIENT_ID.apps.googleusercontent.com";
+/* ================= CLIENT ID ================= */
 
-google.accounts.id.initialize({
-  client_id:CLIENT_ID,
-  callback:(res)=>{
-    token=res.credential;
-    alert("Logged in");
+function saveClientId(){
+  CLIENT_ID = clientIdInput.value;
+  localStorage.setItem("client_id", CLIENT_ID);
+  alert("Client ID saved");
+}
+
+window.onload = () => {
+  const saved = localStorage.getItem("client_id");
+  if(saved){
+    CLIENT_ID = saved;
+    clientIdInput.value = saved;
   }
-});
-
-document.getElementById("loginBtn").onclick=()=>{
-  google.accounts.id.prompt();
+  render();
 };
+
+/* ================= GOOGLE ================= */
+
+function initGoogle(){
+  if(!CLIENT_ID){
+    alert("Paste Client ID first");
+    return;
+  }
+
+  google.accounts.id.initialize({
+    client_id: CLIENT_ID,
+    callback: handleLogin
+  });
+
+  alert("Google initialized");
+}
+
+function login(){
+  google.accounts.id.prompt();
+}
+
+function handleLogin(res){
+  token = res.credential;
+  alert("Login success");
+}
 
 /* ================= CAMERA ================= */
 
 navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}})
 .then(stream=>{
-  video.srcObject=stream;
+  video.srcObject = stream;
 });
 
 /* ================= CAPTURE ================= */
 
 function capture(){
 
-  const canvas=document.getElementById("canvas");
-  canvas.width=video.videoWidth;
-  canvas.height=video.videoHeight;
+  const canvas = document.getElementById("canvas");
+
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
 
   canvas.getContext("2d").drawImage(video,0,0);
 
-  imageData=canvas.toDataURL("image/png");
+  imageData = canvas.toDataURL("image/png");
 
   popup.style.display="block";
 }
 
-/* ================= DRIVE UPLOAD ================= */
+/* ================= DRIVE ================= */
 
 async function upload(blob,name,folderId){
 
-  const form=new FormData();
+  const form = new FormData();
 
-  form.append("metadata",new Blob([JSON.stringify({
+  form.append("metadata", new Blob([JSON.stringify({
     name,
     parents:[folderId]
   })],{type:"application/json"}));
 
-  form.append("file",blob);
+  form.append("file", blob);
 
-  return await fetch(
+  return fetch(
     "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
     {
       method:"POST",
@@ -186,25 +238,26 @@ async function upload(blob,name,folderId){
   ).then(r=>r.json());
 }
 
-/* ================= SAVE ================= */
+/* ================= SAVE ITEM ================= */
 
 async function saveItem(){
 
-  const item={
-    id:crypto.randomUUID(),
-    name:name.value,
-    price:+price.value,
-    category:category.value
+  const item = {
+    id: crypto.randomUUID(),
+    name: name.value,
+    price: Number(price.value),
+    category: category.value
   };
 
-  item.qrData=JSON.stringify(item);
+  item.qrData = JSON.stringify(item);
 
-  const imgBlob=await (await fetch(imageData)).blob();
+  const imgBlob = await (await fetch(imageData)).blob();
 
-  let folder=localStorage.getItem("folder_"+item.category);
+  let folder = localStorage.getItem("folder_"+item.category);
 
   if(!folder){
-    const f=await fetch("https://www.googleapis.com/drive/v3/files",{
+
+    const f = await fetch("https://www.googleapis.com/drive/v3/files",{
       method:"POST",
       headers:{
         "Authorization":"Bearer "+token,
@@ -216,42 +269,65 @@ async function saveItem(){
       })
     }).then(r=>r.json());
 
-    folder=f.id;
+    folder = f.id;
     localStorage.setItem("folder_"+item.category,folder);
   }
 
-  await upload(new File([imgBlob],item.id+".png"),item.id+".png",folder);
+  await upload(
+    new File([imgBlob], item.id+".png"),
+    item.id+".png",
+    folder
+  );
 
-  await upload(new Blob([item.qrData],{type:"application/json"}),item.id+".json",folder);
+  await upload(
+    new Blob([item.qrData],{type:"application/json"}),
+    item.id+".json",
+    folder
+  );
 
-  addToUI(item);
+  let db = JSON.parse(localStorage.getItem("db")||"[]");
+  db.push(item);
+  localStorage.setItem("db",JSON.stringify(db));
+
   popup.style.display="none";
+  render();
 }
 
-/* ================= UI ================= */
+/* ================= RENDER ================= */
 
-function addToUI(item){
+function render(){
 
-  const div=document.createElement("div");
-  div.className="card";
+  const db = JSON.parse(localStorage.getItem("db")||"[]");
 
-  const qr=document.createElement("div");
-  new QRCode(qr,{
-    text:item.qrData,
-    width:60,
-    height:60
+  let html = `<h3>📦 Items</h3><div class="grid">`;
+
+  db.forEach(item=>{
+
+    const div = document.createElement("div");
+    div.className="card";
+
+    const qr = document.createElement("div");
+    new QRCode(qr,{
+      text:item.qrData,
+      width:60,
+      height:60
+    });
+    qr.className="qr";
+
+    div.innerHTML = `
+      <b>${item.name}</b><br/>
+      💰 ${item.price}<br/>
+      📂 ${item.category}
+    `;
+
+    div.appendChild(qr);
+    document.getElementById("view").appendChild(div);
   });
-  qr.className="qr";
-
-  div.innerHTML=`
-    <b>${item.name}</b><br/>
-    💰 ${item.price}<br/>
-    📂 ${item.category}
-  `;
-
-  div.appendChild(qr);
-  view.appendChild(div);
 }
+
+/* ================= INIT ================= */
+
+render();
 
 </script>
 
