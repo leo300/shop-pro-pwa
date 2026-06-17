@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Shop Pro Inventory</title>
+
+<link rel="manifest" href="manifest.json"/>
+<script src="https://apis.google.com/js/api.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+<style>
+body {
+  font-family: Arial;
+  margin: 0;
+  background: #0f172a;
+  color: white;
+}
+
+.header {
+  padding: 15px;
+  background: #111827;
+  font-size: 20px;
+  font-weight: bold;
+}
+
+.container {
+  padding: 10px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+}
+
+.card {
+  background: #1f2937;
+  padding: 10px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+.card:hover {
+  transform: scale(1.03);
+}
+
+.btn {
+  padding: 10px;
+  width: 100%;
+  margin-top: 8px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.primary { background: #3b82f6; color: white; }
+.danger { background: #ef4444; color: white; }
+
+.popup {
+  position: fixed;
+  top: 10%;
+  left: 5%;
+  width: 90%;
+  background: white;
+  color: black;
+  padding: 15px;
+  border-radius: 10px;
+  display: none;
+}
+
+input, select {
+  width: 100%;
+  padding: 8px;
+  margin: 5px 0;
+}
+
+table {
+  width: 100%;
+  margin-top: 10px;
+  border-collapse: collapse;
+}
+
+td, th {
+  border: 1px solid #444;
+  padding: 6px;
+  text-align: center;
+}
+
+.qr-box {
+  background: white;
+  padding: 5px;
+  border-radius: 6px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="header">📦 Shop Pro Inventory System</div>
+
+<div class="container">
+
+<button class="btn primary" onclick="renderCategories()">🏠 Dashboard</button>
+<button class="btn" onclick="exportCSV()">📊 Export Excel</button>
+
+<div id="view"></div>
+
+</div>
+
+<!-- POPUP -->
+<div class="popup" id="popup">
+
+<h3>➕ Add Item</h3>
+
+<input id="name" placeholder="Name"/>
+<input id="price" type="number" placeholder="Price"/>
+<input id="qty" type="number" placeholder="Quantity"/>
+<select id="category">
+  <option>Food</option>
+  <option>Drink</option>
+  <option>Electronics</option>
+</select>
+
+<button class="btn primary" onclick="saveItem()">Save</button>
+<button class="btn danger" onclick="closePopup()">Close</button>
+
+</div>
+
+<script>
+let currentCategory = null;
+let cart = [];
+let imageData = "";
+
+/* ===================== STORAGE ===================== */
+
+function getDB() {
+  return JSON.parse(localStorage.getItem("db") || "[]");
+}
+
+function saveDB(db) {
+  localStorage.setItem("db", JSON.stringify(db));
+}
+
+/* ===================== DASHBOARD ===================== */
+
+function renderCategories() {
+
+  const db = getDB();
+  const view = document.getElementById("view");
+
+  const cats = [...new Set(db.map(i => i.category))];
+
+  view.innerHTML = "<h2>📁 Categories</h2>";
+
+  const grid = document.createElement("div");
+  grid.className = "grid";
+
+  cats.forEach(cat => {
+
+    const div = document.createElement("div");
+    div.className = "card";
+
+    div.innerHTML = `<h3>${cat}</h3><p>Click to open</p>`;
+
+    div.onclick = () => openCategory(cat);
+
+    grid.appendChild(div);
+  });
+
+  view.appendChild(grid);
+}
+
+/* ===================== CATEGORY VIEW ===================== */
+
+function openCategory(cat) {
+
+  currentCategory = cat;
+
+  const db = getDB().filter(i => i.category === cat);
+  const view = document.getElementById("view");
+
+  view.innerHTML = `<h2>📂 ${cat}</h2>
+  <button class="btn primary" onclick="openAdd()">➕ Add Item</button>
+  <div id="items"></div>`;
+
+  const container = document.getElementById("items");
+
+  db.forEach(item => {
+
+    const card = document.createElement("div");
+    card.className = "card";
+
+    const qr = document.createElement("div");
+    qr.className = "qr-box";
+    new QRCode(qr, JSON.stringify(item));
+
+    card.innerHTML = `
+      <b>${item.name}</b><br/>
+      💰 ${item.price}<br/>
+      📦 Qty: ${item.qty || 1}
+      <button class="btn primary" onclick='addToCart("${item.id}")'>Add</button>
+    `;
+
+    card.appendChild(qr);
+    container.appendChild(card);
+  });
+}
+
+/* ===================== CART ===================== */
+
+function addToCart(id) {
+
+  let db = getDB();
+  let item = db.find(i => i.id === id);
+
+  let found = cart.find(c => c.id === id);
+
+  if (found) {
+    found.qty++;
+  } else {
+    cart.push({ ...item, qty: 1 });
+  }
+
+  renderCart();
+}
+
+function removeItem(id) {
+  cart = cart.filter(i => i.id !== id);
+  renderCart();
+}
+
+function renderCart() {
+
+  const view = document.getElementById("view");
+
+  let html = `<h2>🧾 Cart</h2>
+  <table>
+  <tr>
+    <th>Name</th>
+    <th>Price</th>
+    <th>Qty</th>
+    <th>Total</th>
+    <th>Action</th>
+  </tr>`;
+
+  cart.forEach(i => {
+
+    html += `
+      <tr>
+        <td>${i.name}</td>
+        <td>${i.price}</td>
+        <td>${i.qty}</td>
+        <td>${i.price * i.qty}</td>
+        <td><button onclick="removeItem('${i.id}')">❌</button></td>
+      </tr>
+    `;
+  });
+
+  html += `</table>`;
+
+  view.innerHTML = html;
+}
+
+/* ===================== ADD ITEM ===================== */
+
+function openAdd() {
+  popup.style.display = "block";
+}
+
+function closePopup() {
+  popup.style.display = "none";
+}
+
+function saveItem() {
+
+  let db = getDB();
+
+  const item = {
+    id: crypto.randomUUID(),
+    name: name.value,
+    price: Number(price.value),
+    qty: Number(qty.value),
+    category: category.value
+  };
+
+  item.qrData = JSON.stringify(item);
+
+  db.push(item);
+  saveDB(db);
+
+  closePopup();
+  openCategory(item.category);
+}
+
+/* ===================== EXPORT CSV ===================== */
+
+function exportCSV() {
+
+  let rows = [["Name","Price","Qty","Total"]];
+
+  cart.forEach(i => {
+    rows.push([i.name, i.price, i.qty, i.price*i.qty]);
+  });
+
+  let csv = rows.map(r => r.join(",")).join("\n");
+
+  let blob = new Blob([csv], { type: "text/csv" });
+
+  let a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "invoice.csv";
+  a.click();
+}
+
+/* ===================== INIT ===================== */
+
+renderCategories();
+</script>
+
+</body>
+</html>
