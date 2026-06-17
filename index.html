@@ -3,9 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Shop Pro Fixed</title>
+<title>Shop POS Pro</title>
 
-<script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
 <style>
@@ -19,18 +18,17 @@ body{
 /* HEADER */
 .header{
   padding:12px;
-  font-size:18px;
   background:#111827;
+  font-weight:bold;
 }
 
-/* BUTTONS MOBILE FIX */
+/* BUTTONS */
 .btn{
   width:100%;
   padding:10px;
-  margin-top:8px;
+  margin-top:6px;
   border:none;
   border-radius:8px;
-  font-size:14px;
 }
 
 /* LAYOUT */
@@ -38,7 +36,7 @@ body{
 
 .grid{
   display:grid;
-  grid-template-columns:repeat(2,1fr);
+  grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
   gap:10px;
 }
 
@@ -46,23 +44,16 @@ body{
   background:#1f2937;
   padding:10px;
   border-radius:10px;
-  font-size:14px;
 }
 
-/* QR IMAGE SMALL OVERLAY */
-.item-box{
-  position:relative;
-}
-
-.qr-mini{
-  position:absolute;
-  bottom:5px;
-  right:5px;
-  width:60px;
-  height:60px;
+/* QR SMALL */
+.qr{
+  width:50px;
+  height:50px;
   background:white;
   padding:3px;
   border-radius:6px;
+  float:right;
 }
 
 /* POPUP */
@@ -83,11 +74,10 @@ input,select{
   width:100%;
   padding:8px;
   margin:5px 0;
-  font-size:14px;
 }
 
 /* CATEGORY BAR */
-.cat-bar{
+.bar{
   display:flex;
   overflow-x:auto;
   gap:8px;
@@ -96,27 +86,26 @@ input,select{
 
 .cat{
   background:#334155;
-  padding:8px 12px;
+  padding:6px 10px;
   border-radius:20px;
   white-space:nowrap;
-  font-size:13px;
+  cursor:pointer;
 }
 </style>
 </head>
 
 <body>
 
-<div class="header">📦 Shop Pro Mobile POS</div>
+<div class="header">📦 SHOP POS SYSTEM</div>
 
 <div class="container">
 
-<!-- LOGIN -->
-<button class="btn" id="loginBtn">🔐 Google Login</button>
+<!-- CATEGORY BAR -->
+<div class="bar" id="bar"></div>
 
-<!-- DASHBOARD -->
-<div class="cat-bar" id="cats"></div>
+<button class="btn" onclick="renderDashboard()">🏠 Dashboard</button>
+<button class="btn" onclick="exportCSV()">📊 Export Excel</button>
 
-<!-- ITEMS -->
 <div id="view"></div>
 
 </div>
@@ -124,10 +113,11 @@ input,select{
 <!-- POPUP -->
 <div class="popup" id="popup">
 
-<h3>Add Item</h3>
+<h3>Item</h3>
 
 <input id="name" placeholder="Name"/>
 <input id="price" type="number" placeholder="Price"/>
+
 <select id="category">
   <option>Food</option>
   <option>Drink</option>
@@ -135,173 +125,168 @@ input,select{
 </select>
 
 <button class="btn" onclick="saveItem()">Save</button>
-<button class="btn" onclick="popup.style.display='none'">Close</button>
+<button class="btn" onclick="closePopup()">Close</button>
 
 </div>
 
 <script>
 
-let token = "";
-let currentCat = "Food";
-
-/* ================= GOOGLE LOGIN (FIXED) ================= */
-
-const CLIENT_ID = "YOUR_CLIENT_ID.apps.googleusercontent.com";
-
-const loginBtn = document.getElementById("loginBtn");
-
-window.onload = () => {
-  renderCategories();
-};
-
-function initGIS(){
-  google.accounts.id.initialize({
-    client_id: CLIENT_ID,
-    callback: handleLogin
-  });
-
-  loginBtn.onclick = () => google.accounts.id.prompt();
-}
-
-function handleLogin(res){
-  token = res.credential;
-  alert("Login success");
-}
-
-initGIS();
-
-/* ================= DRIVE UPLOAD (FIXED) ================= */
-
-async function uploadToDrive(blob, name, folderId){
-
-  const meta = {
-    name,
-    parents:[folderId]
-  };
-
-  const form = new FormData();
-  form.append("metadata", new Blob([JSON.stringify(meta)],{type:"application/json"}));
-  form.append("file", blob);
-
-  return await fetch(
-    "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
-    {
-      method:"POST",
-      headers:{
-        "Authorization":"Bearer "+token
-      },
-      body:form
-    }
-  ).then(r=>r.json());
-}
-
-/* ================= DATA ================= */
+/* ================= DB ================= */
 
 function getDB(){
   return JSON.parse(localStorage.getItem("db")||"[]");
 }
 
-function saveDB(d){
-  localStorage.setItem("db",JSON.stringify(d));
+function saveDB(db){
+  localStorage.setItem("db",JSON.stringify(db));
 }
 
-/* ================= CATEGORIES ================= */
+/* ================= DASHBOARD ================= */
 
-function renderCategories(){
+function renderDashboard(){
 
-  const db = getDB();
-  const cats = [...new Set(db.map(i=>i.category))];
+  const db=getDB();
+  const cats=[...new Set(db.map(i=>i.category))];
 
-  if(cats.length===0) cats.push("Food");
-
-  const bar = document.getElementById("cats");
+  const bar=document.getElementById("bar");
   bar.innerHTML="";
 
   cats.forEach(c=>{
     const d=document.createElement("div");
     d.className="cat";
     d.innerText=c;
-    d.onclick=()=>openCat(c);
+    d.onclick=()=>openCategory(c);
     bar.appendChild(d);
   });
 
-  openCat(cats[0]);
+  if(cats.length) openCategory(cats[0]);
 }
 
-/* ================= CATEGORY VIEW ================= */
+/* ================= CATEGORY ================= */
 
-function openCat(cat){
+function openCategory(cat){
 
-  currentCat=cat;
+  const db=getDB().filter(i=>i.category===cat);
 
-  const db = getDB().filter(i=>i.category===cat);
-  const view=document.getElementById("view");
-
-  view.innerHTML=`
-    <h3>${cat}</h3>
-    <button class="btn" onclick="popup.style.display='block'">➕ Add</button>
-    <div class="grid" id="grid"></div>
-  `;
-
-  const grid=document.getElementById("grid");
+  let html=`<h3>${cat}</h3>
+  <button class="btn" onclick="popup.style.display='block'">➕ Add</button>
+  <div class="grid">`;
 
   db.forEach(item=>{
 
-    const card=document.createElement("div");
-    card.className="card item-box";
-
-    const qr=document.createElement("div");
-    new QRCode(qr,{
+    const qrDiv=document.createElement("div");
+    new QRCode(qrDiv,{
       text:JSON.stringify(item),
-      width:60,
-      height:60
+      width:50,
+      height:50
     });
 
-    card.innerHTML=`
-      <b>${item.name}</b><br/>
-      💰 ${item.price}
+    html+=`
+      <div class="card">
+        <b>${item.name}</b><br/>
+        💰 ${item.price}
+        <div id="qr-${item.id}" class="qr"></div>
+
+        <button onclick="editItem('${item.id}')">✏️</button>
+        <button onclick="deleteItem('${item.id}')">🗑</button>
+        <button onclick="addCart('${item.id}')">➕</button>
+      </div>
     `;
-
-    qr.className="qr-mini";
-    card.appendChild(qr);
-
-    card.onclick=()=>addToCart(item);
-
-    grid.appendChild(card);
   });
+
+  html+="</div>";
+
+  view.innerHTML=html;
+
+  db.forEach(item=>{
+    const el=document.getElementById("qr-"+item.id);
+    if(el){
+      new QRCode(el,{
+        text:JSON.stringify(item),
+        width:50,
+        height:50
+      });
+    }
+  });
+}
+
+/* ================= CRUD ================= */
+
+function saveItem(){
+
+  let db=getDB();
+
+  db.push({
+    id:crypto.randomUUID(),
+    name:name.value,
+    price:+price.value,
+    category:category.value
+  });
+
+  saveDB(db);
+  popup.style.display="none";
+  renderDashboard();
+}
+
+function deleteItem(id){
+  let db=getDB().filter(i=>i.id!==id);
+  saveDB(db);
+  renderDashboard();
+}
+
+function editItem(id){
+
+  let db=getDB();
+  let item=db.find(i=>i.id===id);
+
+  name.value=item.name;
+  price.value=item.price;
+  category.value=item.category;
+
+  popup.dataset.edit=id;
+  popup.style.display="block";
 }
 
 /* ================= CART ================= */
 
 let cart=[];
 
-function addToCart(item){
+function addCart(id){
+  let db=getDB();
+  let item=db.find(i=>i.id===id);
 
-  let f=cart.find(x=>x.id===item.id);
-
+  let f=cart.find(i=>i.id===id);
   if(f) f.qty++;
   else cart.push({...item,qty:1});
 
-  alert(item.name+" added");
+  alert("Added");
 }
 
-/* ================= SAVE ITEM ================= */
+/* ================= EXPORT ================= */
 
-function saveItem(){
+function exportCSV(){
 
-  const item={
-    id:crypto.randomUUID(),
-    name:name.value,
-    price:+price.value,
-    category:category.value
-  };
+  let rows=[["Name","Price","Qty","Total"]];
 
-  const db=getDB();
-  db.push(item);
-  saveDB(db);
+  cart.forEach(i=>{
+    rows.push([i.name,i.price,i.qty,i.price*i.qty]);
+  });
 
+  let csv=rows.map(r=>r.join(",")).join("\n");
+
+  let blob=new Blob([csv],{type:"text/csv"});
+  let a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);
+  a.download="sales.csv";
+  a.click();
+}
+
+/* ================= INIT ================= */
+
+renderDashboard();
+
+function closePopup(){
   popup.style.display="none";
-  renderCategories();
 }
 
 </script>
