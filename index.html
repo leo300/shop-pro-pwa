@@ -3,8 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Shop POS Pro</title>
+<title>Scan + Drive POS</title>
 
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
 <style>
@@ -15,14 +16,18 @@ body{
   color:white;
 }
 
-/* HEADER */
 .header{
   padding:12px;
   background:#111827;
-  font-weight:bold;
 }
 
-/* BUTTONS */
+.container{padding:10px;}
+
+video{
+  width:100%;
+  border-radius:10px;
+}
+
 .btn{
   width:100%;
   padding:10px;
@@ -31,12 +36,9 @@ body{
   border-radius:8px;
 }
 
-/* LAYOUT */
-.container{padding:10px;}
-
 .grid{
   display:grid;
-  grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+  grid-template-columns:repeat(2,1fr);
   gap:10px;
 }
 
@@ -44,19 +46,21 @@ body{
   background:#1f2937;
   padding:10px;
   border-radius:10px;
+  position:relative;
 }
 
-/* QR SMALL */
+/* QR inside image corner */
 .qr{
-  width:50px;
-  height:50px;
+  position:absolute;
+  bottom:5px;
+  right:5px;
+  width:60px;
+  height:60px;
   background:white;
   padding:3px;
   border-radius:6px;
-  float:right;
 }
 
-/* POPUP */
 .popup{
   position:fixed;
   top:10%;
@@ -75,36 +79,21 @@ input,select{
   padding:8px;
   margin:5px 0;
 }
-
-/* CATEGORY BAR */
-.bar{
-  display:flex;
-  overflow-x:auto;
-  gap:8px;
-  padding:10px;
-}
-
-.cat{
-  background:#334155;
-  padding:6px 10px;
-  border-radius:20px;
-  white-space:nowrap;
-  cursor:pointer;
-}
 </style>
 </head>
 
 <body>
 
-<div class="header">📦 SHOP POS SYSTEM</div>
+<div class="header">📷 Scan + Drive POS</div>
 
 <div class="container">
 
-<!-- CATEGORY BAR -->
-<div class="bar" id="bar"></div>
+<button class="btn" id="loginBtn">🔐 Google Login</button>
 
-<button class="btn" onclick="renderDashboard()">🏠 Dashboard</button>
-<button class="btn" onclick="exportCSV()">📊 Export Excel</button>
+<video id="video" autoplay></video>
+<button class="btn" onclick="capture()">📸 Capture Item</button>
+
+<canvas id="canvas" style="display:none;"></canvas>
 
 <div id="view"></div>
 
@@ -113,7 +102,7 @@ input,select{
 <!-- POPUP -->
 <div class="popup" id="popup">
 
-<h3>Item</h3>
+<h3>Item Form</h3>
 
 <input id="name" placeholder="Name"/>
 <input id="price" type="number" placeholder="Price"/>
@@ -124,169 +113,144 @@ input,select{
   <option>Electronics</option>
 </select>
 
-<button class="btn" onclick="saveItem()">Save</button>
-<button class="btn" onclick="closePopup()">Close</button>
+<button class="btn" onclick="saveItem()">💾 Save + Upload</button>
+<button class="btn" onclick="popup.style.display='none'">Close</button>
 
 </div>
 
 <script>
 
-/* ================= DB ================= */
+let token="";
+let imageData="";
 
-function getDB(){
-  return JSON.parse(localStorage.getItem("db")||"[]");
+/* ================= GOOGLE LOGIN ================= */
+
+const CLIENT_ID="YOUR_CLIENT_ID.apps.googleusercontent.com";
+
+google.accounts.id.initialize({
+  client_id:CLIENT_ID,
+  callback:(res)=>{
+    token=res.credential;
+    alert("Logged in");
+  }
+});
+
+document.getElementById("loginBtn").onclick=()=>{
+  google.accounts.id.prompt();
+};
+
+/* ================= CAMERA ================= */
+
+navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}})
+.then(stream=>{
+  video.srcObject=stream;
+});
+
+/* ================= CAPTURE ================= */
+
+function capture(){
+
+  const canvas=document.getElementById("canvas");
+  canvas.width=video.videoWidth;
+  canvas.height=video.videoHeight;
+
+  canvas.getContext("2d").drawImage(video,0,0);
+
+  imageData=canvas.toDataURL("image/png");
+
+  popup.style.display="block";
 }
 
-function saveDB(db){
-  localStorage.setItem("db",JSON.stringify(db));
-}
+/* ================= DRIVE UPLOAD ================= */
 
-/* ================= DASHBOARD ================= */
+async function upload(blob,name,folderId){
 
-function renderDashboard(){
+  const form=new FormData();
 
-  const db=getDB();
-  const cats=[...new Set(db.map(i=>i.category))];
+  form.append("metadata",new Blob([JSON.stringify({
+    name,
+    parents:[folderId]
+  })],{type:"application/json"}));
 
-  const bar=document.getElementById("bar");
-  bar.innerHTML="";
+  form.append("file",blob);
 
-  cats.forEach(c=>{
-    const d=document.createElement("div");
-    d.className="cat";
-    d.innerText=c;
-    d.onclick=()=>openCategory(c);
-    bar.appendChild(d);
-  });
-
-  if(cats.length) openCategory(cats[0]);
-}
-
-/* ================= CATEGORY ================= */
-
-function openCategory(cat){
-
-  const db=getDB().filter(i=>i.category===cat);
-
-  let html=`<h3>${cat}</h3>
-  <button class="btn" onclick="popup.style.display='block'">➕ Add</button>
-  <div class="grid">`;
-
-  db.forEach(item=>{
-
-    const qrDiv=document.createElement("div");
-    new QRCode(qrDiv,{
-      text:JSON.stringify(item),
-      width:50,
-      height:50
-    });
-
-    html+=`
-      <div class="card">
-        <b>${item.name}</b><br/>
-        💰 ${item.price}
-        <div id="qr-${item.id}" class="qr"></div>
-
-        <button onclick="editItem('${item.id}')">✏️</button>
-        <button onclick="deleteItem('${item.id}')">🗑</button>
-        <button onclick="addCart('${item.id}')">➕</button>
-      </div>
-    `;
-  });
-
-  html+="</div>";
-
-  view.innerHTML=html;
-
-  db.forEach(item=>{
-    const el=document.getElementById("qr-"+item.id);
-    if(el){
-      new QRCode(el,{
-        text:JSON.stringify(item),
-        width:50,
-        height:50
-      });
+  return await fetch(
+    "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
+    {
+      method:"POST",
+      headers:{
+        "Authorization":"Bearer "+token
+      },
+      body:form
     }
-  });
+  ).then(r=>r.json());
 }
 
-/* ================= CRUD ================= */
+/* ================= SAVE ================= */
 
-function saveItem(){
+async function saveItem(){
 
-  let db=getDB();
-
-  db.push({
+  const item={
     id:crypto.randomUUID(),
     name:name.value,
     price:+price.value,
     category:category.value
-  });
+  };
 
-  saveDB(db);
+  item.qrData=JSON.stringify(item);
+
+  const imgBlob=await (await fetch(imageData)).blob();
+
+  let folder=localStorage.getItem("folder_"+item.category);
+
+  if(!folder){
+    const f=await fetch("https://www.googleapis.com/drive/v3/files",{
+      method:"POST",
+      headers:{
+        "Authorization":"Bearer "+token,
+        "Content-Type":"application/json"
+      },
+      body:JSON.stringify({
+        name:item.category,
+        mimeType:"application/vnd.google-apps.folder"
+      })
+    }).then(r=>r.json());
+
+    folder=f.id;
+    localStorage.setItem("folder_"+item.category,folder);
+  }
+
+  await upload(new File([imgBlob],item.id+".png"),item.id+".png",folder);
+
+  await upload(new Blob([item.qrData],{type:"application/json"}),item.id+".json",folder);
+
+  addToUI(item);
   popup.style.display="none";
-  renderDashboard();
 }
 
-function deleteItem(id){
-  let db=getDB().filter(i=>i.id!==id);
-  saveDB(db);
-  renderDashboard();
-}
+/* ================= UI ================= */
 
-function editItem(id){
+function addToUI(item){
 
-  let db=getDB();
-  let item=db.find(i=>i.id===id);
+  const div=document.createElement("div");
+  div.className="card";
 
-  name.value=item.name;
-  price.value=item.price;
-  category.value=item.category;
-
-  popup.dataset.edit=id;
-  popup.style.display="block";
-}
-
-/* ================= CART ================= */
-
-let cart=[];
-
-function addCart(id){
-  let db=getDB();
-  let item=db.find(i=>i.id===id);
-
-  let f=cart.find(i=>i.id===id);
-  if(f) f.qty++;
-  else cart.push({...item,qty:1});
-
-  alert("Added");
-}
-
-/* ================= EXPORT ================= */
-
-function exportCSV(){
-
-  let rows=[["Name","Price","Qty","Total"]];
-
-  cart.forEach(i=>{
-    rows.push([i.name,i.price,i.qty,i.price*i.qty]);
+  const qr=document.createElement("div");
+  new QRCode(qr,{
+    text:item.qrData,
+    width:60,
+    height:60
   });
+  qr.className="qr";
 
-  let csv=rows.map(r=>r.join(",")).join("\n");
+  div.innerHTML=`
+    <b>${item.name}</b><br/>
+    💰 ${item.price}<br/>
+    📂 ${item.category}
+  `;
 
-  let blob=new Blob([csv],{type:"text/csv"});
-  let a=document.createElement("a");
-  a.href=URL.createObjectURL(blob);
-  a.download="sales.csv";
-  a.click();
-}
-
-/* ================= INIT ================= */
-
-renderDashboard();
-
-function closePopup(){
-  popup.style.display="none";
+  div.appendChild(qr);
+  view.appendChild(div);
 }
 
 </script>
