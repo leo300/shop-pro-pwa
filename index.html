@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Smart Shop Drive v3</title>
+<title>Smart Shop Drive v4</title>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -31,18 +31,23 @@ video,canvas{
 
 .btn{
   width:100%;
-  padding:10px;
-  margin-top:8px;
+  padding:12px;
+  margin-top:10px;
   border:none;
-  border-radius:8px;
+  border-radius:10px;
   background:#2563eb;
   color:white;
+  font-size:16px;
   -webkit-tap-highlight-color: transparent;
 }
 
 .btn:active{
   transform:scale(0.98);
   opacity:0.7;
+}
+
+.btn:disabled{
+  opacity:0.5;
 }
 
 .grid{
@@ -55,7 +60,6 @@ video,canvas{
   background:#1f2937;
   padding:10px;
   border-radius:10px;
-  cursor:pointer;
 }
 
 .popup{
@@ -73,27 +77,23 @@ video,canvas{
 
 input,select{
   width:100%;
-  padding:8px;
+  padding:10px;
   margin:5px 0;
-}
-
-img{
-  width:100%;
-  border-radius:10px;
 }
 </style>
 </head>
 
 <body>
 
-<header>📦 Smart Shop Drive</header>
+<header>📦 Smart Shop Drive v4 (Stable)</header>
 
 <div class="container">
 
 <input id="clientId" placeholder="Google Client ID"/>
 
-<button class="btn" onclick="initGoogle()">Init Google</button>
-<button class="btn" onclick="login()">Connect Drive</button>
+<button id="connectBtn" class="btn" onclick="connectDrive()">
+🔗 Connect Drive
+</button>
 
 <video id="video" autoplay playsinline></video>
 
@@ -127,99 +127,57 @@ img{
 
 <script>
 
-/* ================= AUTH ================= */
+/* ================= STATE ================= */
 
 let accessToken = "";
 let tokenClient;
 let shopFolderId = "";
+let connecting = false;
 
-function initGoogle(){
-  tokenClient = google.accounts.oauth2.initTokenClient({
-    client_id: clientId.value,
-    scope: "https://www.googleapis.com/auth/drive.file",
-    callback: async (res)=>{
-      accessToken = res.access_token;
-      await ensureShopFolder();
-      loadDashboard();
+/* ================= CONNECT (FIXED SINGLE BUTTON FLOW) ================= */
+
+async function connectDrive(){
+
+  if(connecting) return;
+  connecting = true;
+
+  const btn = document.getElementById("connectBtn");
+  btn.disabled = true;
+  btn.innerText = "Connecting...";
+
+  try{
+
+    if(!tokenClient){
+
+      tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: clientId.value,
+        scope: "https://www.googleapis.com/auth/drive.file",
+        callback: async (res)=>{
+          accessToken = res.access_token;
+          await ensureShopFolder();
+          await loadDashboard();
+        }
+      });
     }
-  });
+
+    tokenClient.requestAccessToken();
+
+  }catch(e){
+    alert("Error: "+e.message);
+  }
+
+  setTimeout(()=>{
+    btn.disabled = false;
+    btn.innerText = "🔗 Connect Drive";
+    connecting = false;
+  },2000);
 }
 
-function login(){
-  tokenClient.requestAccessToken();
-}
-
-/* ================= CAMERA ================= */
-
-let imageData="";
-
-async function startCamera(){
-  const stream = await navigator.mediaDevices.getUserMedia({
-    video:{facingMode:"environment"}
-  });
-  video.srcObject = stream;
-}
-
-function capture(){
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
-  canvas.getContext("2d").drawImage(video,0,0);
-
-  imageData = canvas.toDataURL("image/png");
-  popup.style.display="block";
-}
-
-/* ================= SAFE IMAGE ================= */
-
-function loadImage(src){
-  return new Promise((res)=>{
-    const img=new Image();
-    img.onload=()=>res(img);
-    img.src=src;
-  });
-}
-
-/* ================= QR ================= */
-
-function makeQR(text){
-  return new Promise(res=>{
-    const d=document.createElement("div");
-    new QRCode(d,{text,width:120,height:120});
-    setTimeout(()=>{
-      const img=d.querySelector("img");
-      const c=document.createElement("canvas");
-      c.width=120;c.height=120;
-      c.getContext("2d").drawImage(img,0,0);
-      res(c.toDataURL("image/png"));
-    },200);
-  });
-}
-
-/* ================= MERGE ================= */
-
-async function merge(item){
-
-  const base = await loadImage(imageData);
-  const qr = await loadImage(await makeQR(JSON.stringify(item)));
-
-  const c=document.createElement("canvas");
-  c.width=base.width;
-  c.height=base.height;
-
-  const ctx=c.getContext("2d");
-  ctx.drawImage(base,0,0);
-
-  const size = Math.min(c.width,c.height)*0.2;
-
-  ctx.drawImage(qr,c.width-size-10,c.height-size-10,size,size);
-
-  return c.toDataURL("image/png");
-}
-
-/* ================= ROOT (NO DUPLICATES) ================= */
+/* ================= SAFE ROOT (NO DUPLICATES FIXED) ================= */
 
 async function ensureShopFolder(){
 
+  // reuse cached
   let saved = localStorage.getItem("SHOP_ROOT");
   if(saved){
     shopFolderId = saved;
@@ -239,7 +197,7 @@ async function ensureShopFolder(){
 
   if(data.files?.length){
     shopFolderId = data.files[0].id;
-  } else {
+  }else{
 
     const create = await fetch(
       "https://www.googleapis.com/drive/v3/files",
@@ -263,12 +221,78 @@ async function ensureShopFolder(){
   localStorage.setItem("SHOP_ROOT",shopFolderId);
 }
 
+/* ================= CAMERA ================= */
+
+let imageData="";
+
+async function startCamera(){
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video:{facingMode:"environment"}
+  });
+  video.srcObject = stream;
+}
+
+function capture(){
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+
+  canvas.getContext("2d").drawImage(video,0,0);
+
+  imageData = canvas.toDataURL("image/png");
+
+  popup.style.display="block";
+}
+
+/* ================= QR ================= */
+
+function makeQR(text){
+  return new Promise(res=>{
+    const d=document.createElement("div");
+    new QRCode(d,{text,width:120,height:120});
+    setTimeout(()=>{
+      const img=d.querySelector("img");
+      const c=document.createElement("canvas");
+      c.width=120;c.height=120;
+      c.getContext("2d").drawImage(img,0,0);
+      res(c.toDataURL("image/png"));
+    },200);
+  });
+}
+
+/* ================= IMAGE MERGE ================= */
+
+async function loadImage(src){
+  return new Promise(r=>{
+    const i=new Image();
+    i.onload=()=>r(i);
+    i.src=src;
+  });
+}
+
+async function merge(item){
+
+  const base = await loadImage(imageData);
+  const qr = await loadImage(await makeQR(JSON.stringify(item)));
+
+  const c=document.createElement("canvas");
+  c.width=base.width;
+  c.height=base.height;
+
+  const ctx=c.getContext("2d");
+  ctx.drawImage(base,0,0);
+
+  const size = Math.min(c.width,c.height)*0.2;
+  ctx.drawImage(qr,c.width-size-10,c.height-size-10,size,size);
+
+  return c.toDataURL("image/png");
+}
+
 /* ================= CATEGORY ================= */
 
 async function getCategoryFolder(name){
 
   const q = encodeURIComponent(
-    `name='${name}' and '${shopFolderId}' in parents and mimeType='application/vnd.google-apps.folder'`
+    `name='${name}' and '${shopFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`
   );
 
   const res = await fetch(
@@ -300,31 +324,6 @@ async function getCategoryFolder(name){
   return d.id;
 }
 
-/* ================= UPLOAD ================= */
-
-async function upload(blob,name,folder){
-
-  const form=new FormData();
-
-  form.append("metadata",new Blob([JSON.stringify({
-    name,
-    parents:[folder]
-  })],{type:"application/json"}));
-
-  form.append("file",blob);
-
-  const res = await fetch(
-    "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
-    {
-      method:"POST",
-      headers:{Authorization:"Bearer "+accessToken},
-      body:form
-    }
-  );
-
-  return await res.json();
-}
-
 /* ================= SAVE ================= */
 
 async function saveItem(){
@@ -341,10 +340,26 @@ async function saveItem(){
   const img = await merge(item);
   const blob = await (await fetch(img)).blob();
 
-  await upload(blob, item.name.replace(/\s+/g,"_")+".png", folder);
+  const safe = item.name.replace(/\s+/g,"_");
+
+  await fetch(
+    "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
+    {
+      method:"POST",
+      headers:{Authorization:"Bearer "+accessToken},
+      body:(()=>{
+        const f=new FormData();
+        f.append("metadata",new Blob([JSON.stringify({
+          name:safe+".png",
+          parents:[folder]
+        })],{type:"application/json"}));
+        f.append("file",blob);
+        return f;
+      })()
+    }
+  );
 
   popup.style.display="none";
-
   loadDashboard();
 }
 
@@ -361,8 +376,8 @@ async function loadDashboard(){
 
   let html="<h3>📦 Categories</h3><div class='grid'>";
 
-  data.files
-    ?.filter(f=>f.mimeType.includes("folder"))
+  (data.files||[])
+    .filter(f=>f.mimeType.includes("folder"))
     .forEach(f=>{
       html+=`
         <div class="card" onclick="openCategory('${f.id}','${f.name}')">
@@ -374,7 +389,7 @@ async function loadDashboard(){
   view.innerHTML=html;
 }
 
-/* ================= CATEGORY VIEW + DELETE ================= */
+/* ================= CATEGORY VIEW ================= */
 
 async function openCategory(id,name){
 
@@ -387,7 +402,7 @@ async function openCategory(id,name){
 
   let html=`<h3>${name}</h3><button class="btn" onclick="loadDashboard()">Back</button>`;
 
-  data.files?.forEach(f=>{
+  (data.files||[]).forEach(f=>{
     html+=`
       <div class="card">
         📄 ${f.name}
@@ -399,7 +414,7 @@ async function openCategory(id,name){
   view.innerHTML=html;
 }
 
-/* ================= DELETE FROM DRIVE ================= */
+/* ================= DELETE ================= */
 
 async function deleteFile(id){
 
