@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Smart Shop Drive</title>
+<title>Smart Shop Drive PRO</title>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -75,18 +75,19 @@ input,select{
 
 <body>
 
-<header>📦 Smart Shop Drive System</header>
+<header>📦 Smart Shop Drive PRO (FIXED)</header>
 
 <div class="container">
 
 <input id="clientId" placeholder="Google Client ID"/>
 
-<button class="btn" onclick="initGoogle()">Init Google</button>
+<button class="btn" onclick="initGoogle()">Init Google OAuth</button>
+<button class="btn" onclick="login()">Get Access Token</button>
 
 <video id="video" autoplay playsinline></video>
 
-<button class="btn" onclick="startCamera()">📷 Scan Product</button>
-<button class="btn" onclick="capture()">📸 Capture</button>
+<button class="btn" onclick="startCamera()">📷 Start Camera</button>
+<button class="btn" onclick="capture()">📸 Capture Item</button>
 
 <canvas id="canvas"></canvas>
 
@@ -118,15 +119,26 @@ input,select{
 let token = "";
 let imageData = "";
 
-/* ================= GOOGLE AUTH ================= */
+/* ================= GOOGLE OAUTH (FIXED) ================= */
+
+let tokenClient;
 
 function initGoogle(){
-  google.accounts.id.initialize({
+
+  tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: clientId.value,
-    callback: res => token = res.credential
+    scope: "https://www.googleapis.com/auth/drive.file",
+    callback: (resp) => {
+      token = resp.access_token;
+      console.log("TOKEN OK", token);
+    }
   });
 
-  google.accounts.id.prompt(); // silent popup
+  alert("OAuth initialized");
+}
+
+function login(){
+  tokenClient.requestAccessToken();
 }
 
 /* ================= CAMERA ================= */
@@ -139,7 +151,7 @@ async function startCamera(){
   video.srcObject = stream;
 }
 
-/* ================= CAPTURE IMAGE ================= */
+/* ================= CAPTURE ================= */
 
 function capture(){
 
@@ -156,11 +168,11 @@ function capture(){
   popup.style.display = "block";
 }
 
-/* ================= QR CANVAS ================= */
+/* ================= QR CANVAS FIX ================= */
 
-function createQRCanvas(text){
+function makeQR(text){
 
-  return new Promise(resolve=>{
+  return new Promise(resolve => {
 
     const temp = document.createElement("div");
 
@@ -170,8 +182,7 @@ function createQRCanvas(text){
       height:120
     });
 
-    setTimeout(()=>{
-
+    setTimeout(() => {
       const img = temp.querySelector("img");
 
       const c = document.createElement("canvas");
@@ -188,14 +199,14 @@ function createQRCanvas(text){
   });
 }
 
-/* ================= EMBED QR INTO IMAGE ================= */
+/* ================= MERGE QR INTO IMAGE ================= */
 
-async function mergeQR(item){
+async function mergeImage(item){
 
   const img = new Image();
   img.src = imageData;
 
-  await new Promise(r=>img.onload=r);
+  await new Promise(r => img.onload = r);
 
   const c = document.createElement("canvas");
   const ctx = c.getContext("2d");
@@ -205,44 +216,19 @@ async function mergeQR(item){
 
   ctx.drawImage(img,0,0);
 
-  const qr = await createQRCanvas(JSON.stringify(item));
+  const qr = await makeQR(JSON.stringify(item));
 
   ctx.drawImage(qr,c.width-140,c.height-140,120,120);
 
   return c.toDataURL("image/png");
 }
 
-/* ================= DRIVE UPLOAD ================= */
-
-async function upload(blob,name,folderId){
-
-  const form = new FormData();
-
-  form.append("metadata", new Blob([JSON.stringify({
-    name,
-    parents:[folderId]
-  })], {type:"application/json"}));
-
-  form.append("file", blob);
-
-  return fetch(
-    "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
-    {
-      method:"POST",
-      headers:{
-        Authorization:"Bearer "+token
-      },
-      body:form
-    }
-  );
-}
-
-/* ================= FOLDER ================= */
+/* ================= DRIVE FOLDER ================= */
 
 async function getFolder(name){
 
-  let f = localStorage.getItem("folder_"+name);
-  if(f) return f;
+  let id = localStorage.getItem("folder_"+name);
+  if(id) return id;
 
   const res = await fetch("https://www.googleapis.com/drive/v3/files",{
     method:"POST",
@@ -263,6 +249,31 @@ async function getFolder(name){
   return data.id;
 }
 
+/* ================= UPLOAD ================= */
+
+async function upload(blob,name,folder){
+
+  const form = new FormData();
+
+  form.append("metadata", new Blob([JSON.stringify({
+    name,
+    parents:[folder]
+  })],{type:"application/json"}));
+
+  form.append("file", blob);
+
+  return fetch(
+    "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
+    {
+      method:"POST",
+      headers:{
+        "Authorization":"Bearer "+token
+      },
+      body:form
+    }
+  );
+}
+
 /* ================= SAVE FLOW ================= */
 
 async function saveItem(){
@@ -274,21 +285,12 @@ async function saveItem(){
     category: category.value
   };
 
-  const finalImage = await mergeQR(item);
+  const finalImage = await mergeImage(item);
 
   const folder = await getFolder(item.category);
 
-  await upload(
-    new Blob([finalImage]),
-    item.id+".png",
-    folder
-  );
-
-  await upload(
-    new Blob([JSON.stringify(item)]),
-    item.id+".json",
-    folder
-  );
+  await upload(new Blob([finalImage]), item.id+".png", folder);
+  await upload(new Blob([JSON.stringify(item)]), item.id+".json", folder);
 
   let db = JSON.parse(localStorage.getItem("db")||"[]");
   db.push({...item,image:finalImage});
@@ -319,7 +321,7 @@ function render(){
   view.innerHTML = html;
 }
 
-/* ================= CATEGORY ================= */
+/* ================= CATEGORY VIEW ================= */
 
 function openCat(cat){
 
