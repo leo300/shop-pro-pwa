@@ -287,21 +287,24 @@ async function saveItem(){
     return;
   }
 
-  const itemData = {
+ const item = {
+    id: crypto.randomUUID(),
     name: nameVal,
     price: priceVal,
     category: categoryVal
   };
 
-  const categoryId = await getCategoryID(categoryVal);
-  const qrCodeUrl = generateQRCode(itemData);
-  
-  // In a real app, you would upload the image and QR code to Google Drive
-  // For this demo, we'll just show the QR code
-  alert(`Product "${nameVal}" saved with QR code: ${qrCodeUrl}`);
-  
-  closePopup();
-  await loadDashboard();
+  const folder = await getCategoryFolder(categoryVal);
+
+  const img = await merge(item);
+  const blob = await (await fetch(img)).blob();
+
+  await upload(blob, item.name+".png", folder);
+
+  imageData="";
+  el("popup").style.display="none";
+
+  loadDashboard();
 }
 
 /* ================= DASHBOARD (CATEGORIES) ================= */
