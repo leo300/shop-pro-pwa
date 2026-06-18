@@ -211,7 +211,7 @@ async function saveItem(){
   const img = await merge(item);
   const blob = await (await fetch(img)).blob();
 
-  await upload(blob, id + ".jpg", folder);
+ upload(blob, name + ".jpg", folder);
 
   bootstrap.Modal.getInstance(el("productModal")).hide();
 
