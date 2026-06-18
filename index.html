@@ -326,7 +326,7 @@ async function openCategory(id,name){
   (data.files||[]).forEach(f=>{
     html+=`
       <div class="col-6">
-        <div class="card-dark" onclick="openImage('${f.webContentLink || f.thumbnailLink}')">
+        <div class="card-dark" onclick="openImage('${f.id}')">
           <img src="${f.thumbnailLink || ''}" class="img-thumb">
           <div>${f.name}</div>
         </div>
@@ -340,9 +340,20 @@ async function openCategory(id,name){
 }
 
 /* IMAGE VIEW */
-function openImage(src){
-  el("modalImg").src = src;
-  new bootstrap.Modal(el("imgModal")).show();
+function openImage(fileId){
+  const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
+
+  fetch(url, {
+    headers: {
+      Authorization: "Bearer " + accessToken
+    }
+  })
+  .then(res => res.blob())
+  .then(blob => {
+    const imgUrl = URL.createObjectURL(blob);
+    el("modalImg").src = imgUrl;
+    new bootstrap.Modal(el("imgModal")).show();
+  });
 }
 
 function closeImage(){
