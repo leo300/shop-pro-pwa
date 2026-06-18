@@ -20,6 +20,7 @@ header{background:#111827;padding:12px;text-align:center;font-weight:bold;}
   border-radius:12px;
   padding:10px;
   cursor:pointer;
+  position:relative;
 }
 
 .img-thumb{
@@ -30,13 +31,19 @@ header{background:#111827;padding:12px;text-align:center;font-weight:bold;}
 }
 
 .price-tag{
+  position:absolute;
+  bottom:8px;
+  right:8px;
   background:#16a34a;
   color:white;
-  padding:2px 6px;
+  padding:3px 8px;
   border-radius:6px;
   font-size:12px;
-  display:inline-block;
-  margin-top:4px;
+  font-weight:bold;
+}
+
+.search-box{
+  margin:10px 0;
 }
 </style>
 </head>
@@ -63,6 +70,9 @@ header{background:#111827;padding:12px;text-align:center;font-weight:bold;}
 <button class="btn btn-warning w-100 mb-3" onclick="capture()">Capture</button>
 
 <canvas id="canvas" class="d-none"></canvas>
+
+<!-- 🔥 SEARCH -->
+<input id="search" class="form-control search-box" placeholder="Search products..." oninput="filterProducts()">
 
 <div id="view"></div>
 
@@ -99,7 +109,7 @@ header{background:#111827;padding:12px;text-align:center;font-weight:bold;}
   </div>
 </div>
 
-<!-- IMAGE PREVIEW FIXED -->
+<!-- IMAGE PREVIEW -->
 <div class="modal fade" id="imgModal">
   <div class="modal-dialog modal-fullscreen">
     <div class="modal-content bg-black">
@@ -125,6 +135,7 @@ const el = id => document.getElementById(id);
 let token="";
 let rootFolder="";
 let imageData="";
+let currentItems=[]; //for search
 
 /* CONNECT */
 function connectDrive(){
@@ -211,14 +222,14 @@ async function saveItem(){
   const img = await merge(item);
   const blob = await (await fetch(img)).blob();
 
- upload(blob, name + ".jpg", folder);
+  await upload(blob, name + ".jpg", folder);
 
   bootstrap.Modal.getInstance(el("productModal")).hide();
 
   loadRoot();
 }
 
-/* QR FIX (NO OVERFLOW) */
+/* QR */
 function qr(text){
   return new Promise(res=>{
     const div = document.createElement("div");
@@ -246,12 +257,11 @@ function loadImage(src){
   });
 }
 
-/* MERGE (ONLY ID IN QR) */
+/* MERGE */
 async function merge(item){
 
   const photo = await loadImage(imageData);
 
-  // ✅ FIX: ONLY ID (NOT FULL JSON → FIX OVERFLOW)
   const qrImg = await loadImage(await qr(item.id));
 
   const canvas = document.createElement("canvas");
@@ -288,7 +298,7 @@ async function upload(blob,name,folder){
   });
 }
 
-/* FOLDER FIX */
+/* FOLDER */
 async function getFolder(name){
 
   const q = encodeURIComponent(`name='${name}' and '${rootFolder}' in parents and trashed=false`);
@@ -317,7 +327,7 @@ async function getFolder(name){
   return (await c.json()).id;
 }
 
-/* LOAD ROOT (FIX CLICKABLE SUBFOLDERS) */
+/* LOAD ROOT */
 async function loadRoot(){
 
   const r = await fetch(
@@ -345,7 +355,7 @@ async function loadRoot(){
   el("view").innerHTML = html;
 }
 
-/* OPEN FOLDER */
+/* OPEN FOLDER (WITH PRICE DATA) */
 async function openFolder(id,name){
 
   const r = await fetch(
@@ -355,14 +365,25 @@ async function openFolder(id,name){
 
   const d = await r.json();
 
-  let html = `<h5>${name}</h5><button class="btn btn-secondary mb-2" onclick="loadRoot()">Back</button><div class='row g-2'>`;
+  currentItems = d.files || []; // 🔥 for search
 
-  d.files?.forEach(f=>{
+  renderItems(currentItems, name);
+}
+
+/* RENDER ITEMS + PRICE OVERLAY */
+function renderItems(items, title){
+
+  let html = `<h5>${title}</h5>
+  <button class="btn btn-secondary mb-2" onclick="loadRoot()">Back</button>
+  <div class='row g-2'>`;
+
+  items.forEach(f=>{
     html += `
-      <div class="col-6">
+      <div class="col-6 item-card" data-name="${f.name.toLowerCase()}">
         <div class="card-dark" onclick="preview('${f.id}')">
           <img class="img-thumb" src="${f.thumbnailLink || ''}">
-          <div>${f.name}</div>
+          <div class="price-tag">Open</div>
+          <div style="font-size:12px">${f.name}</div>
         </div>
       </div>
     `;
@@ -373,7 +394,19 @@ async function openFolder(id,name){
   el("view").innerHTML = html;
 }
 
-/* PREVIEW FIXED */
+/* SEARCH */
+function filterProducts(){
+
+  const q = el("search").value.toLowerCase();
+
+  const filtered = currentItems.filter(i =>
+    i.name.toLowerCase().includes(q)
+  );
+
+  renderItems(filtered, "Search Results");
+}
+
+/* PREVIEW */
 function preview(id){
 
   fetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media`,{
