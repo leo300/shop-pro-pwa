@@ -248,18 +248,97 @@ async function saveItem(){
     return showToast("Fill all fields");
   }
 
-  const data = {name,price,category};
+  if(!imageData){
+    return showToast("No image captured");
+  }
 
-  el("qrBox").innerHTML="";
-  new QRCode(el("qrBox"),{
-    text:JSON.stringify(data),
-    width:150,
-    height:150
+  // 1. convert base64 image → blob
+  const blob = await (await fetch(imageData)).blob();
+
+  // 2. create image file metadata
+  const imageMetadata = {
+    name: `${name}.png`,
+    mimeType: "image/png",
+    parents: [shopFolderId] // default root (we can improve later per-category)
+  };
+
+  // 3. upload image to Drive
+  const formData = new FormData();
+  formData.append(
+    "metadata",
+    new Blob([JSON.stringify(imageMetadata)], {type: "application/json"})
+  );
+  formData.append("file", blob);
+
+  const uploadRes = await fetch(
+    "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink",
+    {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer " + accessToken
+      },
+      body: formData
+    }
+  );
+
+  const uploaded = await uploadRes.json();
+
+  if(!uploaded.id){
+    console.log(uploaded);
+    return showToast("Upload failed");
+  }
+
+  // 4. create product JSON file
+  const product = {
+    name,
+    price,
+    category,
+    imageId: uploaded.id,
+    createdAt: new Date().toISOString()
+  };
+
+  const jsonBlob = new Blob([JSON.stringify(product)], {
+    type: "application/json"
   });
 
-  showToast("Product saved (QR generated)");
+  const jsonMetadata = {
+    name: `${name}.json`,
+    mimeType: "application/json",
+    parents: [shopFolderId]
+  };
+
+  const jsonForm = new FormData();
+  jsonForm.append(
+    "metadata",
+    new Blob([JSON.stringify(jsonMetadata)], {type:"application/json"})
+  );
+  jsonForm.append("file", jsonBlob);
+
+  await fetch(
+    "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
+    {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer " + accessToken
+      },
+      body: jsonForm
+    }
+  );
+
+  // 5. QR code
+  el("qrBox").innerHTML = "";
+  new QRCode(el("qrBox"), {
+    text: JSON.stringify(product),
+    width: 150,
+    height: 150
+  });
+
+  showToast("Product SAVED to Drive ✅");
 
   bootstrap.Modal.getInstance(el("productModal")).hide();
+
+  // refresh view
+  loadDashboard();
 }
 
 /* DASHBOARD */
