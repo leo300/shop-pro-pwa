@@ -15,8 +15,10 @@
 body{background:#0f172a;color:white;}
 header{background:#111827;padding:12px;text-align:center;font-weight:bold;}
 .card-dark{background:#1f2937;border-radius:12px;padding:10px;cursor:pointer;}
+.card-dark:hover{background:#374151;}
 .img-thumb{width:100%;height:140px;object-fit:cover;border-radius:10px;}
 video{width:100%;border-radius:12px;}
+.active-folder{border:2px solid #22c55e;}
 </style>
 </head>
 
@@ -112,6 +114,7 @@ let tokenClient=null;
 let shopFolderId="";
 let imageData="";
 let currentFolderId=null;
+let currentCategoryName=null;
 
 /* TOAST */
 function showToast(msg){
@@ -138,7 +141,7 @@ function connectDrive(){
   tokenClient.requestAccessToken();
 }
 
-/* DRIVE FOLDER */
+/* MAIN ROOT FOLDER */
 async function ensureShopFolder(){
 
   const saved = localStorage.getItem("SHOP_ROOT");
@@ -177,6 +180,40 @@ async function ensureShopFolder(){
   localStorage.setItem("SHOP_ROOT",shopFolderId);
 }
 
+/* CREATE OR GET CATEGORY FOLDER */
+async function getOrCreateCategoryFolder(name){
+
+  const q = encodeURIComponent(
+    `name='${name}' and mimeType='application/vnd.google-apps.folder' and '${shopFolderId}' in parents and trashed=false`
+  );
+
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)`,{
+    headers:{Authorization:"Bearer "+accessToken}
+  });
+
+  const data = await res.json();
+
+  if(data.files?.length){
+    return data.files[0].id;
+  }
+
+  const create = await fetch("https://www.googleapis.com/drive/v3/files",{
+    method:"POST",
+    headers:{
+      Authorization:"Bearer "+accessToken,
+      "Content-Type":"application/json"
+    },
+    body:JSON.stringify({
+      name,
+      mimeType:"application/vnd.google-apps.folder",
+      parents:[shopFolderId]
+    })
+  });
+
+  const d = await create.json();
+  return d.id;
+}
+
 /* CAMERA */
 async function startCamera(){
   const stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}});
@@ -197,37 +234,34 @@ function capture(){
   new bootstrap.Modal(el("productModal")).show();
 }
 
-/* SAVE ITEM (NO JSON SAVE ANYMORE) */
+/* SAVE ITEM */
 async function saveItem(){
 
   const name = el("name").value;
   const price = el("price").value;
   const category = el("category").value;
 
-  if(!name || !price){
-    return showToast("Fill all fields");
-  }
+  if(!name || !price) return showToast("Fill all fields");
+  if(!imageData) return showToast("No image captured");
 
-  if(!imageData){
-    return showToast("No image captured");
-  }
+  // IMPORTANT FIX: get correct folder
+  const folderId = await getOrCreateCategoryFolder(category);
+  currentFolderId = folderId;
 
-  // convert image
   const blob = await (await fetch(imageData)).blob();
 
-  // upload IMAGE ONLY
-  const imageMetadata = {
+  const metadata = {
     name: `${name}.png`,
     mimeType: "image/png",
-    parents: [currentFolderId || shopFolderId]
+    parents: [folderId]
   };
 
   const formData = new FormData();
-  formData.append("metadata", new Blob([JSON.stringify(imageMetadata)], {type:"application/json"}));
+  formData.append("metadata", new Blob([JSON.stringify(metadata)], {type:"application/json"}));
   formData.append("file", blob);
 
   const uploadRes = await fetch(
-    "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink",
+    "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id",
     {
       method: "POST",
       headers: { Authorization: "Bearer " + accessToken },
@@ -237,30 +271,19 @@ async function saveItem(){
 
   const uploaded = await uploadRes.json();
 
-  if(!uploaded.id){
-    return showToast("Upload failed");
-  }
+  if(!uploaded.id) return showToast("Upload failed");
 
-  // LOCAL product object only (NOT saved to Drive)
-  const product = {
-    name,
-    price,
-    category,
-    imageId: uploaded.id,
-    createdAt: new Date().toISOString()
-  };
-
-  // QR code only local
-  el("qrBox").innerHTML = "";
-  new QRCode(el("qrBox"), {
-    text: JSON.stringify(product),
-    width: 150,
-    height: 150
-  });
-
-  showToast("Product SAVED (image only) ✅");
+  showToast("Saved in " + category);
 
   bootstrap.Modal.getInstance(el("productModal")).hide();
+
+  loadDashboard();
+}
+
+/* CLICK CATEGORY */
+async function openCategory(folderId, name){
+  currentFolderId = folderId;
+  currentCategoryName = name;
   loadDashboard();
 }
 
@@ -268,20 +291,21 @@ async function saveItem(){
 async function loadDashboard(){
 
   const res = await fetch(
-    `https://www.googleapis.com/drive/v3/files?q='${shopFolderId}'+in+parents&fields=files(id,name,mimeType,thumbnailLink)`,
+    `https://www.googleapis.com/drive/v3/files?q='${shopFolderId}'+in+parents&fields=files(id,name,mimeType)`,
     {headers:{Authorization:"Bearer "+accessToken}}
   );
 
   const data = await res.json();
 
-  let html = `<h5>Categories</h5><div class="row g-2">`;
+  let html = `<h5>Main Categories</h5><div class="row g-2">`;
 
   (data.files||[])
     .filter(f=>f.mimeType.includes("folder"))
     .forEach(f=>{
       html+=`
         <div class="col-6">
-          <div class="card-dark text-center">
+          <div class="card-dark text-center ${currentFolderId===f.id?'active-folder':''}"
+               onclick="openCategory('${f.id}','${f.name}')">
             <i class="fa-solid fa-folder fa-2x"></i>
             <div>${f.name}</div>
           </div>
@@ -291,11 +315,16 @@ async function loadDashboard(){
 
   html+="</div>";
 
+  if(currentCategoryName){
+    html += `<hr><h6>Inside: ${currentCategoryName}</h6>`;
+  }
+
   el("view").innerHTML = html;
 }
 
 /* IMAGE VIEW */
 function openImage(fileId){
+
   const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
 
   fetch(url,{headers:{Authorization:"Bearer "+accessToken}})
