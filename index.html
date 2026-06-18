@@ -382,7 +382,7 @@ function renderItems(items, title){
       <div class="col-6 item-card" data-name="${f.name.toLowerCase()}">
         <div class="card-dark" onclick="preview('${f.id}')">
           <img class="img-thumb" src="${f.thumbnailLink || ''}">
-          <div class="price-tag">Open</div>
+          <div class="price-tag">>${f.price || ''}</div>
           <div style="font-size:12px">${f.name}</div>
         </div>
       </div>
