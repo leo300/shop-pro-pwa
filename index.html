@@ -6,6 +6,7 @@
 <title>Smart Shop Drive v6</title>
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
 <style>
 body{
@@ -13,6 +14,16 @@ body{
   font-family:Arial;
   background:#0f172a;
   color:white;
+  display:flex;
+  justify-content:center;
+}
+
+/* CENTER WRAPPER FOR PC */
+.app{
+  width:100%;
+  max-width:900px;
+  min-height:100vh;
+  background:#0f172a;
 }
 
 /* HEADER */
@@ -21,13 +32,17 @@ header{
   background:#111827;
   font-weight:bold;
   text-align:center;
+  position:sticky;
+  top:0;
 }
 
 /* CONTAINER */
-.container{padding:12px;}
+.container{
+  padding:12px;
+}
 
-/* INPUT FIX (IMPORTANT) */
-input{
+/* INPUT */
+input, select{
   width:100%;
   padding:14px;
   margin:8px 0;
@@ -47,16 +62,13 @@ input{
   background:#2563eb;
   color:white;
   font-size:16px;
+  cursor:pointer;
 }
 
-.btn:active{
-  transform:scale(0.98);
-}
-
-/* GRID */
+/* GRID RESPONSIVE */
 .grid{
   display:grid;
-  grid-template-columns:repeat(2,1fr);
+  grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
   gap:10px;
   margin-top:10px;
 }
@@ -85,21 +97,23 @@ input{
   object-fit:cover;
 }
 
-/* POPUP */
+/* POPUP CENTER FIX */
 .popup{
   position:fixed;
-  top:10%;
-  left:5%;
+  top:50%;
+  left:50%;
+  transform:translate(-50%,-50%);
   width:90%;
+  max-width:400px;
   background:white;
   color:black;
-  padding:10px;
+  padding:12px;
   border-radius:12px;
   display:none;
   z-index:10;
 }
 
-/* FULLSCREEN VIEW */
+/* MODAL */
 .modal{
   position:fixed;
   top:0;
@@ -123,6 +137,7 @@ input{
 video,canvas{
   width:100%;
   border-radius:12px;
+  margin-top:8px;
 }
 </style>
 </head>
