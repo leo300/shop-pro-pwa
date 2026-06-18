@@ -3,12 +3,13 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Smart Shop Drive FULL FIX</title>
+<title>Smart Shop Drive PRO FIX</title>
 
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
 <style>
 body{background:#0f172a;color:white;}
@@ -16,29 +17,26 @@ header{background:#111827;padding:12px;text-align:center;font-weight:bold;}
 
 .card-dark{
   background:#1f2937;
-  padding:10px;
   border-radius:12px;
+  padding:10px;
   cursor:pointer;
-  text-align:center;
 }
 
-.img-card img{
+.img-thumb{
   width:100%;
   height:120px;
   object-fit:cover;
   border-radius:10px;
 }
 
-.price{
-  color:#22c55e;
-  font-weight:bold;
-  font-size:13px;
-}
-
-.breadcrumb{
-  background:#111827;
-  padding:8px;
-  border-radius:8px;
+.price-tag{
+  background:#16a34a;
+  color:white;
+  padding:2px 6px;
+  border-radius:6px;
+  font-size:12px;
+  display:inline-block;
+  margin-top:4px;
 }
 </style>
 </head>
@@ -46,33 +44,74 @@ header{background:#111827;padding:12px;text-align:center;font-weight:bold;}
 <body>
 
 <header>
-  <i class="fa fa-store"></i> Smart Shop Drive FULL FIX
+  <i class="fa fa-store"></i> Smart Shop Drive PRO FIX
 </header>
 
 <div class="container py-3">
 
 <div class="d-flex gap-2 mb-2">
   <input id="clientId" class="form-control" placeholder="Google Client ID">
+
   <button class="btn btn-primary" onclick="connectDrive()">
     <i class="fa fa-plug"></i>
   </button>
 </div>
 
-<div id="nav"></div>
+<video id="video" autoplay playsinline class="w-100 rounded mb-2"></video>
+
+<button class="btn btn-success w-100 mb-2" onclick="startCamera()">Start Camera</button>
+<button class="btn btn-warning w-100 mb-3" onclick="capture()">Capture</button>
+
+<canvas id="canvas" class="d-none"></canvas>
+
 <div id="view"></div>
 
 </div>
 
-<!-- IMAGE PREVIEW -->
+<!-- PRODUCT MODAL -->
+<div class="modal fade" id="productModal">
+  <div class="modal-dialog">
+    <div class="modal-content text-dark">
+
+      <div class="modal-header">
+        <h5 class="modal-title">Add Product</h5>
+        <button class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body">
+        <input id="name" class="form-control mb-2" placeholder="Name">
+        <input id="price" class="form-control mb-2" type="number" placeholder="Price">
+
+        <select id="category" class="form-select mb-2">
+          <option>Food</option>
+          <option>Drink</option>
+          <option>Electronics</option>
+        </select>
+
+        <div id="qrBox"></div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-primary" onclick="saveItem()">Save</button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- IMAGE PREVIEW FIXED -->
 <div class="modal fade" id="imgModal">
   <div class="modal-dialog modal-fullscreen">
     <div class="modal-content bg-black">
+
       <div class="modal-header bg-dark text-white">
         <button class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
       </div>
-      <div class="modal-body d-flex justify-content-center align-items-center">
+
+      <div class="modal-body d-flex align-items-center justify-content-center">
         <img id="previewImg" class="w-100 h-100 object-fit-contain">
       </div>
+
     </div>
   </div>
 </div>
@@ -81,24 +120,24 @@ header{background:#111827;padding:12px;text-align:center;font-weight:bold;}
 
 <script>
 
-const el=id=>document.getElementById(id);
+const el = id => document.getElementById(id);
 
 let token="";
 let rootFolder="";
-let pathStack=[];
+let imageData="";
 
 /* CONNECT */
 function connectDrive(){
 
-  const clientId=el("clientId").value;
+  const clientId = el("clientId").value;
 
-  const client=google.accounts.oauth2.initTokenClient({
-    client_id:clientId,
-    scope:"https://www.googleapis.com/auth/drive.file",
-    callback:async(res)=>{
-      token=res.access_token;
+  const client = google.accounts.oauth2.initTokenClient({
+    client_id: clientId,
+    scope: "https://www.googleapis.com/auth/drive.file",
+    callback: async (res)=>{
+      token = res.access_token;
       await initRoot();
-      openFolder(rootFolder,"Root");
+      loadRoot();
     }
   });
 
@@ -108,100 +147,233 @@ function connectDrive(){
 /* ROOT */
 async function initRoot(){
 
-  const q=encodeURIComponent("name='TheShop' and mimeType='application/vnd.google-apps.folder' and trashed=false");
+  const q = encodeURIComponent("name='TheShop' and mimeType='application/vnd.google-apps.folder' and trashed=false");
 
-  const r=await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)`,{
+  const r = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)`,{
     headers:{Authorization:"Bearer "+token}
   });
 
-  const d=await r.json();
+  const d = await r.json();
 
   if(d.files?.length){
-    rootFolder=d.files[0].id;
-  }else{
-    const c=await fetch("https://www.googleapis.com/drive/v3/files",{
+    rootFolder = d.files[0].id;
+  } else {
+    const c = await fetch("https://www.googleapis.com/drive/v3/files",{
       method:"POST",
       headers:{
         Authorization:"Bearer "+token,
         "Content-Type":"application/json"
       },
-      body:JSON.stringify({name:"TheShop",mimeType:"application/vnd.google-apps.folder"})
+      body:JSON.stringify({
+        name:"TheShop",
+        mimeType:"application/vnd.google-apps.folder"
+      })
     });
 
-    rootFolder=(await c.json()).id;
+    rootFolder = (await c.json()).id;
   }
 }
 
-/* OPEN ANY FOLDER (MAIN FIX) */
-async function openFolder(folderId,folderName){
+/* CAMERA */
+async function startCamera(){
+  const stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}});
+  el("video").srcObject = stream;
+}
 
-  pathStack.push({id:folderId,name:folderName});
-  renderNav();
+function capture(){
+  const v = el("video"), c = el("canvas");
 
-  const r=await fetch(
-    `https://www.googleapis.com/drive/v3/files?q='${folderId}'+in+parents&fields=files(id,name,mimeType,thumbnailLink)`,
+  c.width = v.videoWidth;
+  c.height = v.videoHeight;
+
+  c.getContext("2d").drawImage(v,0,0);
+
+  imageData = c.toDataURL("image/png");
+
+  new bootstrap.Modal(el("productModal")).show();
+}
+
+/* SAVE ITEM */
+async function saveItem(){
+
+  const name = el("name").value;
+  const price = el("price").value;
+  const category = el("category").value;
+
+  if(!name || !price) return alert("Missing data");
+
+  const id = crypto.randomUUID();
+
+  const item = {id,name,price,category};
+
+  const folder = await getFolder(category);
+
+  const img = await merge(item);
+  const blob = await (await fetch(img)).blob();
+
+  await upload(blob, id + ".jpg", folder);
+
+  bootstrap.Modal.getInstance(el("productModal")).hide();
+
+  loadRoot();
+}
+
+/* QR FIX (NO OVERFLOW) */
+function qr(text){
+  return new Promise(res=>{
+    const div = document.createElement("div");
+
+    new QRCode(div,{
+      text,
+      width:150,
+      height:150
+    });
+
+    setTimeout(()=>{
+      const img = div.querySelector("img");
+      res(img ? img.src : div.querySelector("canvas").toDataURL());
+    },200);
+  });
+}
+
+/* LOAD IMAGE */
+function loadImage(src){
+  return new Promise((res,rej)=>{
+    const i = new Image();
+    i.onload = ()=>res(i);
+    i.onerror = rej;
+    i.src = src;
+  });
+}
+
+/* MERGE (ONLY ID IN QR) */
+async function merge(item){
+
+  const photo = await loadImage(imageData);
+
+  // ✅ FIX: ONLY ID (NOT FULL JSON → FIX OVERFLOW)
+  const qrImg = await loadImage(await qr(item.id));
+
+  const canvas = document.createElement("canvas");
+  canvas.width = photo.width;
+  canvas.height = photo.height;
+
+  const ctx = canvas.getContext("2d");
+
+  ctx.drawImage(photo,0,0);
+
+  const size = 120;
+
+  ctx.drawImage(qrImg, photo.width-size-20, photo.height-size-20, size, size);
+
+  return canvas.toDataURL("image/jpeg",0.9);
+}
+
+/* UPLOAD */
+async function upload(blob,name,folder){
+
+  const form = new FormData();
+
+  form.append("metadata", new Blob([JSON.stringify({
+    name,
+    parents:[folder]
+  })],{type:"application/json"}));
+
+  form.append("file", blob);
+
+  await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",{
+    method:"POST",
+    headers:{Authorization:"Bearer "+token},
+    body:form
+  });
+}
+
+/* FOLDER FIX */
+async function getFolder(name){
+
+  const q = encodeURIComponent(`name='${name}' and '${rootFolder}' in parents and trashed=false`);
+
+  const r = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)`,{
+    headers:{Authorization:"Bearer "+token}
+  });
+
+  const d = await r.json();
+
+  if(d.files?.length) return d.files[0].id;
+
+  const c = await fetch("https://www.googleapis.com/drive/v3/files",{
+    method:"POST",
+    headers:{
+      Authorization:"Bearer "+token,
+      "Content-Type":"application/json"
+    },
+    body:JSON.stringify({
+      name,
+      parents:[rootFolder],
+      mimeType:"application/vnd.google-apps.folder"
+    })
+  });
+
+  return (await c.json()).id;
+}
+
+/* LOAD ROOT (FIX CLICKABLE SUBFOLDERS) */
+async function loadRoot(){
+
+  const r = await fetch(
+    `https://www.googleapis.com/drive/v3/files?q='${rootFolder}'+in+parents&fields=files(id,name,mimeType)`,
     {headers:{Authorization:"Bearer "+token}}
   );
 
-  const d=await r.json();
+  const d = await r.json();
 
-  let html=`<div class='row g-2'>`;
+  let html = "<h5>Categories</h5><div class='row g-2'>";
 
   d.files?.forEach(f=>{
-
-    if(f.mimeType.includes("folder")){
-
-      html+=`
+    html += `
       <div class="col-6">
-        <div class="card-dark" onclick="openFolder('${f.id}','${f.name}')">
+        <div class="card-dark text-center" onclick="openFolder('${f.id}','${f.name}')">
           <i class="fa fa-folder fa-2x"></i>
           <div>${f.name}</div>
         </div>
-      </div>`;
-    }
-    else{
+      </div>
+    `;
+  });
 
-      html+=`
+  html += "</div>";
+
+  el("view").innerHTML = html;
+}
+
+/* OPEN FOLDER */
+async function openFolder(id,name){
+
+  const r = await fetch(
+    `https://www.googleapis.com/drive/v3/files?q='${id}'+in+parents&fields=files(id,name,thumbnailLink)`,
+    {headers:{Authorization:"Bearer "+token}}
+  );
+
+  const d = await r.json();
+
+  let html = `<h5>${name}</h5><button class="btn btn-secondary mb-2" onclick="loadRoot()">Back</button><div class='row g-2'>`;
+
+  d.files?.forEach(f=>{
+    html += `
       <div class="col-6">
         <div class="card-dark" onclick="preview('${f.id}')">
-          <img class="img-card" src="${f.thumbnailLink || ''}">
+          <img class="img-thumb" src="${f.thumbnailLink || ''}">
           <div>${f.name}</div>
         </div>
-      </div>`;
-    }
-
+      </div>
+    `;
   });
 
-  html+="</div>";
+  html += "</div>";
 
-  el("view").innerHTML=html;
+  el("view").innerHTML = html;
 }
 
-/* NAVIGATION BAR */
-function renderNav(){
-
-  let html=`<div class="breadcrumb text-white">`;
-
-  pathStack.forEach((p,i)=>{
-    html+=` <a href="#" onclick="goTo(${i})" style="color:#60a5fa">${p.name}</a> /`;
-  });
-
-  html+=`</div>`;
-
-  el("nav").innerHTML=html;
-}
-
-/* BACK NAV */
-function goTo(index){
-
-  pathStack=pathStack.slice(0,index+1);
-
-  const last=pathStack[pathStack.length-1];
-
-  openFolder(last.id,last.name);
-}
-
-/* IMAGE PREVIEW */
+/* PREVIEW FIXED */
 function preview(id){
 
   fetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media`,{
@@ -209,8 +381,8 @@ function preview(id){
   })
   .then(r=>r.blob())
   .then(b=>{
-    const url=URL.createObjectURL(b);
-    el("previewImg").src=url;
+    const url = URL.createObjectURL(b);
+    el("previewImg").src = url;
     new bootstrap.Modal(el("imgModal")).show();
   });
 }
