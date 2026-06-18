@@ -222,7 +222,7 @@ async function saveItem(){
   const img = await merge(item);
   const blob = await (await fetch(img)).blob();
 
-  await upload(blob, name + ".jpg", folder);
+  await upload(blob, name + ".jpg", folder, item);
 
   bootstrap.Modal.getInstance(el("productModal")).hide();
 
@@ -280,13 +280,14 @@ async function merge(item){
 }
 
 /* UPLOAD */
-async function upload(blob,name,folder){
+async function upload(blob, name, folder, item){
 
   const form = new FormData();
 
   form.append("metadata", new Blob([JSON.stringify({
     name,
-    parents:[folder]
+    parents:[folder],
+    description: JSON.stringify(item) // ✅ STORE PRICE HERE
   })],{type:"application/json"}));
 
   form.append("file", blob);
@@ -359,32 +360,79 @@ async function loadRoot(){
 async function openFolder(id,name){
 
   const r = await fetch(
-    `https://www.googleapis.com/drive/v3/files?q='${id}'+in+parents&fields=files(id,name,thumbnailLink)`,
-    {headers:{Authorization:"Bearer "+token}}
+    `https://www.googleapis.com/drive/v3/files?q='${id}'+in+parents&fields=files(id,name,thumbnailLink,description)`,
+    {
+      headers:{
+        Authorization:"Bearer "+token
+      }
+    }
   );
 
   const d = await r.json();
 
-  currentItems = d.files || []; // 🔥 for search
+  currentItems = (d.files || []).map(f => {
 
-  renderItems(currentItems, name);
+    let price = "";
+
+    try{
+      const meta = JSON.parse(f.description || "{}");
+      price = meta.price || "";
+    }catch(e){
+      console.log(e);
+    }
+
+    return {
+      ...f,
+      price
+    };
+  });
+
+  renderItems(currentItems,name);
 }
 
 /* RENDER ITEMS + PRICE OVERLAY */
-function renderItems(items, title){
+function renderItems(items,title){
 
-  let html = `<h5>${title}</h5>
-  <button class="btn btn-secondary mb-2" onclick="loadRoot()">Back</button>
-  <div class='row g-2'>`;
+  let html = `
+    <h5>${title}</h5>
+
+    <button class="btn btn-secondary mb-2" onclick="loadRoot()">
+      Back
+    </button>
+
+    <div class="row g-2">
+  `;
 
   items.forEach(f=>{
+
     html += `
-      <div class="col-6 item-card" data-name="${f.name.toLowerCase()}">
-        <div class="card-dark" onclick="preview('${f.id}')">
-          <img class="img-thumb" src="${f.thumbnailLink || ''}">
-          <div class="price-tag">${f.price || ''}</div>
-          <div style="font-size:12px">${f.name}</div>
+      <div class="col-6 item-card"
+           data-name="${f.name.toLowerCase()}">
+
+        <div class="card-dark"
+             onclick="preview('${f.id}')">
+
+          <div style="position:relative">
+
+            <img class="img-thumb"
+                 src="${f.thumbnailLink || ''}">
+
+            ${
+              f.price
+              ? `<div class="price-tag position-absolute top-0 end-0 m-2">
+                   $${f.price}
+                 </div>`
+              : ""
+            }
+
+          </div>
+
+          <div style="font-size:12px">
+            ${f.name.replace(/\.(jpg|jpeg|png)$/i,"")}
+          </div>
+
         </div>
+
       </div>
     `;
   });
