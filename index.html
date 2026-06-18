@@ -3,39 +3,42 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Smart Shop Drive FIX PRO</title>
+<title>Smart Shop Drive FINAL PRO</title>
 
+<!-- BOOTSTRAP -->
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+<!-- FONT AWESOME -->
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
 <style>
-body{background:#0f172a;color:white;}
-header{background:#111827;padding:12px;text-align:center;font-weight:bold;}
+body{
+  background:#0f172a;
+  color:white;
+}
+
+header{
+  background:#111827;
+  padding:12px;
+  text-align:center;
+  font-weight:bold;
+}
 
 .card-dark{
   background:#1f2937;
   border-radius:12px;
   padding:10px;
   cursor:pointer;
-  transition:0.2s;
 }
-.card-dark:hover{background:#374151;}
 
 .img-thumb{
   width:100%;
   height:120px;
   object-fit:cover;
   border-radius:10px;
-}
-
-.topbar{
-  display:flex;
-  gap:10px;
-  align-items:center;
-  margin-bottom:10px;
 }
 
 .hidden{display:none;}
@@ -45,18 +48,15 @@ header{background:#111827;padding:12px;text-align:center;font-weight:bold;}
 <body>
 
 <header>
-  <i class="fa-solid fa-store"></i> Smart Shop Drive PRO FIX
+  <i class="fa fa-store"></i> Smart Shop Drive FINAL PRO
 </header>
 
 <div class="container py-3">
 
 <!-- CONNECT -->
-<div class="topbar">
-  <button id="backBtn" class="btn btn-warning hidden" onclick="goBack()">
-    <i class="fa fa-arrow-left"></i>
-  </button>
-
+<div class="d-flex gap-2 mb-2">
   <input id="clientId" class="form-control" placeholder="Google Client ID">
+
   <button class="btn btn-primary" onclick="connectDrive()">
     <i class="fa fa-plug"></i>
   </button>
@@ -73,14 +73,14 @@ header{background:#111827;padding:12px;text-align:center;font-weight:bold;}
   <i class="fa fa-camera-retro"></i> Capture
 </button>
 
-<canvas id="canvas" style="display:none;"></canvas>
+<canvas id="canvas" class="d-none"></canvas>
 
 <div id="view"></div>
 
 </div>
 
-<!-- MODAL -->
-<div class="modal fade" id="modal">
+<!-- PRODUCT MODAL -->
+<div class="modal fade" id="productModal">
   <div class="modal-dialog">
     <div class="modal-content text-dark">
 
@@ -91,6 +91,15 @@ header{background:#111827;padding:12px;text-align:center;font-weight:bold;}
 
       <div class="modal-body">
         <input id="name" class="form-control mb-2" placeholder="Product Name">
+        <input id="price" type="number" class="form-control mb-2" placeholder="Price">
+
+        <select id="category" class="form-select">
+          <option>Food</option>
+          <option>Drink</option>
+          <option>Electronics</option>
+        </select>
+
+        <div id="qrBox" class="mt-3 text-center"></div>
       </div>
 
       <div class="modal-footer">
@@ -101,7 +110,7 @@ header{background:#111827;padding:12px;text-align:center;font-weight:bold;}
   </div>
 </div>
 
-<!-- IMAGE PREVIEW -->
+<!-- IMAGE VIEW -->
 <div class="modal fade" id="imgModal">
   <div class="modal-dialog modal-fullscreen">
     <div class="modal-content bg-black">
@@ -118,19 +127,12 @@ const el = id => document.getElementById(id);
 
 let token="";
 let rootFolder="";
-let currentFolder=null;
-let stack=[];
 let imageData="";
-
-/* NAV UI */
-function updateNav(){
-  el("backBtn").classList.toggle("hidden", stack.length===0);
-}
 
 /* CONNECT */
 function connectDrive(){
+
   const clientId = el("clientId").value;
-  if(!clientId) return alert("Client ID required");
 
   const client = google.accounts.oauth2.initTokenClient({
     client_id: clientId,
@@ -145,7 +147,7 @@ function connectDrive(){
   client.requestAccessToken();
 }
 
-/* ROOT */
+/* ROOT FOLDER */
 async function initRoot(){
 
   const q = encodeURIComponent(
@@ -179,106 +181,117 @@ async function initRoot(){
   }
 }
 
-/* LOAD ROOT */
-async function loadRoot(){
-  stack=[];
-  openFolder(rootFolder,"Categories",true);
-}
-
-/* OPEN FOLDER */
-async function openFolder(id,name,isRoot=false){
-
-  currentFolder=id;
-  if(!isRoot) stack.push(id);
-  updateNav();
-
-  const res = await fetch(
-    `https://www.googleapis.com/drive/v3/files?q='${id}'+in+parents&fields=files(id,name,mimeType)`,
-    {headers:{Authorization:"Bearer "+token}}
-  );
-
-  const data = await res.json();
-
-  let html=`<h5>${name}</h5><div class="row g-2">`;
-
-  (data.files||[]).forEach(f=>{
-
-    if(f.mimeType.includes("folder")){
-      html+=`
-        <div class="col-6">
-          <div class="card-dark text-center" onclick="openFolder('${f.id}','${f.name}')">
-            <i class="fa fa-folder fa-2x"></i>
-            <div>${f.name}</div>
-          </div>
-        </div>`;
-    } else {
-
-      // FIX: ALWAYS reliable image loading
-      const imgUrl = `https://www.googleapis.com/drive/v3/files/${f.id}?alt=media`;
-
-      html+=`
-        <div class="col-6">
-          <div class="card-dark" onclick="preview('${imgUrl}')">
-            <img class="img-thumb" src="${imgUrl}">
-            <div class="text-center mt-1 small">${f.name}</div>
-          </div>
-        </div>`;
-    }
-  });
-
-  html+="</div>";
-  el("view").innerHTML=html;
-}
-
-/* BACK */
-function goBack(){
-  if(stack.length===0) return;
-
-  stack.pop();
-  const prev = stack[stack.length-1];
-
-  if(!prev){
-    loadRoot();
-  } else {
-    openFolder(prev,"Back",true);
-  }
-}
-
 /* CAMERA */
 async function startCamera(){
-  const stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}});
-  el("video").srcObject=stream;
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video:{facingMode:"environment"}
+  });
+  el("video").srcObject = stream;
 }
 
 function capture(){
-  const v=el("video"),c=el("canvas");
+  const v = el("video");
+  const c = el("canvas");
 
-  c.width=v.videoWidth;
-  c.height=v.videoHeight;
+  c.width = v.videoWidth;
+  c.height = v.videoHeight;
 
   c.getContext("2d").drawImage(v,0,0);
 
-  imageData=c.toDataURL("image/png");
+  imageData = c.toDataURL("image/png");
 
-  new bootstrap.Modal(el("modal")).show();
+  new bootstrap.Modal(el("productModal")).show();
 }
 
-/* SAVE */
+/* SAVE ITEM */
 async function saveItem(){
 
   const name = el("name").value;
-  if(!name || !currentFolder) return alert("Missing data");
+  const price = el("price").value;
+  const category = el("category").value;
 
-  const blob = await (await fetch(imageData)).blob();
+  if(!name || !price) return alert("Missing fields");
 
-  const meta = {
-    name:name+".png",
-    parents:[currentFolder]
+  const item = {
+    id: crypto.randomUUID(),
+    name,
+    price,
+    category
   };
 
-  const form = new FormData();
-  form.append("metadata", new Blob([JSON.stringify(meta)],{type:"application/json"}));
-  form.append("file", blob);
+  const folderId = await getCategoryFolder(category);
+
+  const finalImg = await merge(item);
+  const blob = await (await fetch(finalImg)).blob();
+
+  await upload(blob, name + ".png", folderId);
+
+  bootstrap.Modal.getInstance(el("productModal")).hide();
+
+  loadRoot();
+}
+
+/* QR */
+function makeQR(text){
+  return new Promise(resolve=>{
+    const div=document.createElement("div");
+
+    new QRCode(div,{
+      text,
+      width:150,
+      height:150
+    });
+
+    setTimeout(()=>{
+      const img=div.querySelector("img");
+      resolve(img ? img.src : div.querySelector("canvas").toDataURL());
+    },200);
+  });
+}
+
+/* LOAD IMAGE */
+function loadImage(src){
+  return new Promise((res,rej)=>{
+    const img=new Image();
+    img.onload=()=>res(img);
+    img.onerror=rej;
+    img.src=src;
+  });
+}
+
+/* MERGE IMAGE + QR */
+async function merge(item){
+
+  const photo = await loadImage(imageData);
+  const qr = await makeQR(JSON.stringify(item));
+  const qrImg = await loadImage(qr);
+
+  const canvas=document.createElement("canvas");
+  canvas.width=photo.width;
+  canvas.height=photo.height;
+
+  const ctx=canvas.getContext("2d");
+
+  ctx.drawImage(photo,0,0);
+
+  const size=Math.min(photo.width,photo.height)*0.2;
+
+  ctx.drawImage(qrImg,photo.width-size-20,photo.height-size-20,size,size);
+
+  return canvas.toDataURL("image/jpeg",0.9);
+}
+
+/* UPLOAD */
+async function upload(blob,name,folder){
+
+  const form=new FormData();
+
+  form.append("metadata",new Blob([JSON.stringify({
+    name,
+    parents:[folder]
+  })],{type:"application/json"}));
+
+  form.append("file",blob);
 
   await fetch(
     "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
@@ -288,15 +301,69 @@ async function saveItem(){
       body:form
     }
   );
-
-  bootstrap.Modal.getInstance(el("modal")).hide();
-  openFolder(currentFolder,"Updated",true);
 }
 
-/* PREVIEW */
-function preview(src){
-  el("previewImg").src=src;
-  new bootstrap.Modal(el("imgModal")).show();
+/* CATEGORY FOLDER */
+async function getCategoryFolder(name){
+
+  const q = encodeURIComponent(
+    `name='${name}' and '${rootFolder}' in parents and trashed=false`
+  );
+
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)`,
+    {headers:{Authorization:"Bearer "+token}}
+  );
+
+  const d = await res.json();
+
+  if(d.files?.length) return d.files[0].id;
+
+  const c = await fetch("https://www.googleapis.com/drive/v3/files",{
+    method:"POST",
+    headers:{
+      Authorization:"Bearer "+token,
+      "Content-Type":"application/json"
+    },
+    body:JSON.stringify({
+      name,
+      parents:[rootFolder],
+      mimeType:"application/vnd.google-apps.folder"
+    })
+  });
+
+  const r = await c.json();
+  return r.id;
+}
+
+/* LOAD CATEGORIES */
+async function loadRoot(){
+
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files?q='${rootFolder}'+in+parents&fields=files(id,name,mimeType)`,
+    {headers:{Authorization:"Bearer "+token}}
+  );
+
+  const data = await res.json();
+
+  let html="<h5>Categories</h5><div class='row g-2'>";
+
+  (data.files||[])
+  .filter(f=>f.mimeType.includes("folder"))
+  .forEach(f=>{
+    html+=`
+      <div class="col-6">
+        <div class="card-dark text-center">
+          <i class="fa fa-folder fa-2x"></i>
+          <div>${f.name}</div>
+        </div>
+      </div>
+    `;
+  });
+
+  html+="</div>";
+
+  el("view").innerHTML=html;
 }
 
 </script>
