@@ -259,7 +259,7 @@ async function saveItem(){
   const imageMetadata = {
     name: `${name}.png`,
     mimeType: "image/png",
-    parents: [shopFolderId] // default root (we can improve later per-category)
+   parents: [currentFolderId || shopFolderId]
   };
 
   // 3. upload image to Drive
