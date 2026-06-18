@@ -262,7 +262,14 @@ async function merge(item){
 
   const photo = await loadImage(imageData);
 
-  const qrImg = await loadImage(await qr(item));
+  const qrData = JSON.stringify({
+    id:item.id
+    name: item.name,
+    price: item.price,
+    category: item.category
+  });
+
+  const qrImg = await loadImage(await qr(qrData));
 
   const canvas = document.createElement("canvas");
   canvas.width = photo.width;
